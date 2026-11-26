@@ -376,7 +376,7 @@ bool Engine::Impl::load_draft_mtp(std::string& err) {
                     ms_since(t0) / 1000.0,
                     total / 1073741824.0, lg.dev, trunk_head ? "the trunk's" : "its own");
     }
-    cur_dev = -1;
+    reset_dev_cache();
     dmtp = std::move(d);
     return true;
 }

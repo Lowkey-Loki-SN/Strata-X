@@ -498,6 +498,7 @@ bool Engine::Impl::hy4_retire_slots(Stage& g, int64_t new_n, std::string& err) {
     }
     const int64_t NE = hp.n_expert;
     int64_t to_blob = 0, to_file = 0, kept = 0;
+    const int64_t old_end = g.slot_base + g.n_slots;
     set_dev(g.dev);
     while (new_n < g.n_slots && slot_pinned[(size_t) (g.slot_base + g.n_slots - 1)] == 0) {
         const int64_t slot = g.slot_base + g.n_slots - 1;
@@ -530,6 +531,12 @@ bool Engine::Impl::hy4_retire_slots(Stage& g, int64_t new_n, std::string& err) {
     }
     g.st.slots = g.n_slots;
     res_dirty = true;
+    // moex (2026-11-26): a fill or swap that landed in a retired slot (finalize_swaps above queues its check for the next
+    // maintain_cache) is not checked any more - its memory is unmapped next, and slices_hash would read it (an Xid 31)
+    const int64_t new_end = g.slot_base + g.n_slots;
+    verify_queue.erase(std::remove_if(verify_queue.begin(), verify_queue.end(),
+                                      [&](const std::pair<int32_t, int32_t>& v) { return v.first >= new_end && v.first < old_end; }),
+                       verify_queue.end());
     vmm_unmap_from(slot_vmm[(size_t) g.di], (size_t) g.n_slots * slot_bytes);
     if (opt.verbose)
         fprintf(stderr, "strata-x: GPU %d: %lld expert slots left now (STRATA_HY4_KV_GROW: the caches took the rest; their experts: "
@@ -634,7 +641,7 @@ bool Engine::Impl::alloc_state_hy4(std::string& err) {
                 stages[si]->bf16_f32_n = need[si];
             }
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: decode state %.1f MiB for %lld positions (sliding-window rings of %lld)\n", state_bytes / 1048576.0,
                 (long long) opt.n_ctx, (long long) swa_rows);

@@ -1178,6 +1178,9 @@ bool Stage::moe_prompt_cpu(int il, int T, std::string& err) {
     const auto t0 = clk::now();
     // the host's buffers for this chunk (pinned rows in, the CPU's expert rows out)
     if (h_cx_rows < T) {
+        // moex (2026-11-26): the share path's last copy into h_cx (sh_ev[2]) may still be in flight - with no CPU rows nothing
+        // waited for it - and the buffer is freed here
+        if (sh_ev[2]) cudaEventSynchronize(sh_ev[2]);
         host_free(h_cx);
         h_cx_rows = 0;
         if (!(h_cx = static_cast<float*>(host_buf((size_t) T * n * sizeof(float))))) return m.fail(err, "CPU-read rows (out of memory)");   // (nx <= n)
@@ -1381,6 +1384,9 @@ bool Stage::moe_prompt_share(int il, int T, std::string& err) {
     const int R = T * k;
     const auto t0 = clk::now();
     if (h_cx_rows < T) {
+        // moex (2026-11-26): the share path's last copy into h_cx (sh_ev[2]) may still be in flight - with no CPU rows nothing
+        // waited for it - and the buffer is freed here
+        if (sh_ev[2]) cudaEventSynchronize(sh_ev[2]);
         host_free(h_cx);
         h_cx_rows = 0;
         if (!(h_cx = static_cast<float*>(host_buf((size_t) T * n * sizeof(float))))) return m.fail(err, "CPU-share rows (out of memory)");
@@ -2898,7 +2904,7 @@ bool Engine::Impl::prompt(const int32_t* toks, int n, int64_t pos0, int n_avail,
         replay_ends.push_back(pos0 + n);
         std::sort(replay_ends.begin(), replay_ends.end());
     }
-    cur_dev = -1;   // choose_chunk read every GPU's free memory
+    reset_dev_cache();   // choose_chunk read every GPU's free memory
     const int sub = std::min(opt.prefill_sub, TM);
     bool any_ring = false;   // a chunk streams (shared or not): the ring is lent
     for (int T : plan) any_ring |= mode_of(T) != 1;
@@ -2940,7 +2946,7 @@ bool Engine::Impl::prompt(const int32_t* toks, int n, int64_t pos0, int n_avail,
             g0.egc_cap = 0;
             g0.lmh_off = g0.lmh_wk = 0;
             m.cache_unlend();
-            m.cur_dev = -1;
+            m.reset_dev_cache();
         }
     } lend_end{*this};
    // (moex, §63: lm_w - a window's chunks when its rows are in host memory)
@@ -3484,7 +3490,7 @@ bool Engine::Impl::prompt(const int32_t* toks, int n, int64_t pos0, int n_avail,
         eg_pf.clear();
         eg_pf0.clear();
     }
-    cur_dev = -1;
+    reset_dev_cache();
     for (auto& gp : stages) {
         cudaSetDevice(gp->dev);
         if (cudaStreamSynchronize(gp->s) != cudaSuccess) ok = false;
@@ -3528,7 +3534,7 @@ bool Engine::Impl::prompt(const int32_t* toks, int n, int64_t pos0, int n_avail,
         }
         gl.tail_batch = false;
         gl.tails.clear();
-        cur_dev = -1;
+        reset_dev_cache();
     }
     // moex (DSV41_BACKLOG #78): after a stop every stage's running state goes back to where the last stage got - the start
     // of the chunk it did not finish, which each stage ahead of it kept (a stage that never got there keeps its own)
@@ -3559,7 +3565,7 @@ bool Engine::Impl::prompt(const int32_t* toks, int n, int64_t pos0, int n_avail,
         gp->lm_win = 0;
     }
     if (rio) rio->us_refill.fetch_add((int64_t) (ms_since(t_refill) * 1000.0), std::memory_order_relaxed);
-    cur_dev = -1;
+    reset_dev_cache();
     if (!ok) {
         for (const auto& e : errs)
             if (!e.empty()) return fail(err, e);

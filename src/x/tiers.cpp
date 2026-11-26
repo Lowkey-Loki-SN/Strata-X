@@ -265,7 +265,7 @@ bool Engine::Impl::init_cache(std::string& err) {
                 fprintf(stderr, "strata-x: the drafter's experts are not resident in VRAM (%s): draft steps run eagerly on the CPU pool\n",
                         !grouped ? "no grouped kernels for their type" : "no room");
         }
-        cur_dev = -1;
+        reset_dev_cache();
     }
 
     // ---- 1. the VRAM slots, allocated LAST (Strata): what each GPU has left once its reserve stays free
@@ -394,7 +394,7 @@ bool Engine::Impl::init_cache(std::string& err) {
                 fprintf(stderr, "strata-x: GPU %d: %lld expert slots (%.2f GiB), %zu MiB left free\n", g.dev, (long long) g.n_slots,
                         (double) g.n_slots * slot_bytes / 1073741824.0, (size_t) ((free_b - (size_t) g.n_slots * slot_bytes) >> 20));
         }
-    cur_dev = -1;
+    reset_dev_cache();
     n_slots = total;
     const int64_t n_all = n_slots + nx_count;   // the trunk's slots, then the drafter's region
     owner.assign((size_t) n_all, -1);
@@ -734,7 +734,7 @@ bool Engine::Impl::init_cache(std::string& err) {
             for (auto* b : bounce) free_pinned(b);
         });
     for (auto& x : th) x.join();
-    cur_dev = -1;
+    reset_dev_cache();
     if (bad) return fail(err, "loading the experts: " + bad_msg);
 
     // ---- 6. the tables
@@ -877,7 +877,7 @@ bool Engine::Impl::verify_slots(const std::vector<std::pair<int32_t, int32_t>>& 
         if (owner[(size_t) slot] == key) owner[(size_t) slot] = -1;
         res_dirty = true;
     }
-    cur_dev = -1;
+    reset_dev_cache();
     return true;
 }
 

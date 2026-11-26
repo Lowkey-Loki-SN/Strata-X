@@ -345,7 +345,7 @@ bool Engine::Impl::bind_head_split(std::string& err) {
         cudaHostGetDevicePointer((void**) &hs_x_d, hs_x_h, 0) != cudaSuccess ||
         cudaHostGetDevicePointer((void**) &hs_lo_d, hs_lo_h, 0) != cudaSuccess)
         return fail(err, "the head's mapped blocks");
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: the head over both GPUs (STRATA_DSV41_HEAD_SPLIT=0: whole on the last): rows 0-%lld on GPU %d, "
                         "%lld-%lld on GPU %d, each computing its own - the same logits\n",
@@ -498,7 +498,7 @@ bool Engine::Impl::bind_layers_dsv41(std::string& err) {
                 stages[si]->bf16_f32_n = need[si];
             }
     }
-    cur_dev = -1;
+    reset_dev_cache();
     rope_pc = dsv4_rope_pc(hp.crope_base, hp.rope_scale, 1.0f, (int) hp.n_ctx_orig, hp.beta_fast, hp.beta_slow);
     return true;
 }
@@ -1109,7 +1109,7 @@ bool Engine::Impl::rec_io_init(std::string& err) {
             if (cudaEventCreateWithFlags(&g.rbounce_ev[i], cudaEventDisableTiming) != cudaSuccess)
                 return fail(err, "the SSD tier's bounce slots on GPU " + std::to_string(g.dev));
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose) {
         std::string pools;
         double gib = 0;
@@ -2109,7 +2109,7 @@ bool Engine::Impl::alloc_state_dsv41(std::string& err) {
         }
         bytes += dsv41_state_bytes(il);
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: DeepSeek-V4.1 attention state %.1f MiB for %lld positions (raw rings of %lld rows)\n",
                 bytes / 1048576.0, (long long) opt.n_ctx, (long long) dsv4_raw_rows());
@@ -2366,7 +2366,7 @@ bool Engine::Impl::load_dspark_v41(std::string& err) {
         !(lg.dsp_cin = lg.dalloc<float>((size_t) kTmax * (n + rank), err)) || !(lg.dsp_cout = lg.dalloc<float>((size_t) kTmax, err)) ||
         !(lg.dsp_dprev = lg.dalloc<int32_t>((size_t) kTmax + 1, err)) || !(lg.dsp_dprob = lg.dalloc<float>((size_t) kTmax, err)))
         return false;
-    cur_dev = -1;
+    reset_dev_cache();
     dsp = std::move(d);
     return true;
 }
@@ -2569,7 +2569,7 @@ bool Engine::Impl::load_engram(std::string& err) {
             return fail(err, "the engram's window buffer");
         std::memset(g.eg_win_h, 0, bytes);
     }
-    cur_dev = -1;
+    reset_dev_cache();
     eg = std::move(e);
     if (opt.verbose) {
         fprintf(stderr, "strata-x: engram at %d layers (%d rows of %d bytes per token each), tables mapped from %s\n", eg->L,
@@ -2661,7 +2661,7 @@ bool Engine::Impl::load_engram(std::string& err) {
                                     "while it waits for the CPU's experts (STRATA_DSV41_EG_PRE=0: in its own)%s\n", il, host,
                             eg_ring && il == eg_late_layer ? " - behind the fetch's own word (STRATA_DSV41_EG_RING=0: not this layer's)" : "");
             }
-            cur_dev = -1;
+            reset_dev_cache();
         }
     }
     return true;

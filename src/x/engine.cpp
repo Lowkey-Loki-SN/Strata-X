@@ -169,7 +169,7 @@ bool Engine::Impl::verify_dense(int il, const char* when, std::string& err) {
         if (cudaMemcpy(h.data(), d.d, d.bytes, cudaMemcpyDeviceToHost) != cudaSuccess) return fail(err, "readback of " + name + " failed");
         if (slices_hash_host(h.data(), d.bytes) != hash) return fail(err, std::string("dense tensor ") + name + " differs from the file " + when);
     }
-    cur_dev = -1;
+    reset_dev_cache();
     return true;
 }
 
@@ -897,7 +897,7 @@ bool Engine::Impl::alloc_state_mimo(std::string& err) {
             return false;
         bytes += (uint64_t) l.kv_rows * nkv * (hp.hd_k + hp.hd_v) * 2;
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: KV caches %.1f MiB for %lld positions (sliding-window rings of %lld rows)\n", bytes / 1048576.0,
                 (long long) opt.n_ctx, (long long) swa_rows);
@@ -948,7 +948,7 @@ bool Engine::Impl::alloc_state(std::string& err) {
             }
         }
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: decode state %.1f MiB for %lld positions%s\n", state_bytes / 1048576.0,
                 (long long) opt.n_ctx, snap_T ? " (with MTP rollback snapshots)" : "");
@@ -1361,7 +1361,7 @@ int64_t Engine::Impl::choose_split(const std::vector<int>& devs) {
         const uint64_t misc = 336ull << 20;
         free_b[i] = fr > reserve + misc ? fr - reserve - misc : 0;
     }
-    cur_dev = -1;
+    reset_dev_cache();
     double best_mass = -1.0, all = 0;
     for (const Hot& h : prof) all += h.c;
     int64_t best = half, best_cap[2] = {0, 0}, half_cap[2] = {0, 0};
@@ -1579,7 +1579,7 @@ void Engine::reset() {
         cudaSetDevice(gp->dev);
         cudaDeviceSynchronize();
     }
-    m.cur_dev = -1;
+    m.reset_dev_cache();
 }
 
 void Engine::set_short_read(int64_t n) { p_->prompt_short = n; }
@@ -1617,7 +1617,7 @@ bool Engine::imatrix_begin(std::string& err) {
         x->dn[(size_t) il] = b;
         if (!g.imx_order && !(g.imx_order = g.dalloc<int32_t>((size_t) E, err))) return m.fail(err, "the imatrix order: " + err);
     }
-    m.cur_dev = -1;
+    m.reset_dev_cache();
     m.imx = std::move(x);
     return true;
 }
@@ -1648,7 +1648,7 @@ bool Engine::imatrix_write(const std::string& path, std::string& err) const {
                  fwrite(&c, 4, 1, f) == 1;
         }
     }
-    m.cur_dev = -1;
+    m.reset_dev_cache();
     if (fclose(f) != 0 || !ok) return m.fail(err, "writing " + path);
     return true;
 }

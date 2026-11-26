@@ -320,7 +320,7 @@ bool Engine::Impl::load_dflash(std::string& err) {
         for (float*& hb : g.h_dfl)
             if (cudaMallocHost(&hb, (size_t) d.cap * w_row) != cudaSuccess) return fail(err, kDf + "the chunk tails' pinned buffers");
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: DFlash drafter: %.2f GiB of weights on GPU %d, rings of %lld rows, chunk tails of %d rows%s\n",
                 total / 1073741824.0, lg.dev, (long long) d.ring, d.cap, own_head ? " (its own head)" : "");

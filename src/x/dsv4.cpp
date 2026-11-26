@@ -259,7 +259,7 @@ bool Engine::Impl::bind_layers_dsv4(std::string& err) {
             return fail(err, nm("ffn_gate_inp.weight") + ": neither BF16 nor F32");
         }
     }
-    cur_dev = -1;
+    reset_dev_cache();
     rope_pc = dsv4_rope_pc(hp.crope_base, hp.rope_scale, 1.0f, (int) hp.n_ctx_orig, hp.beta_fast, hp.beta_slow);
     return true;
 }
@@ -325,7 +325,7 @@ bool Engine::Impl::alloc_state_dsv4(std::string& err) {
         }
         bytes += dsv4_state_bytes(il);
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: DeepSeek-V4 attention state %.1f MiB for %lld positions (raw rings of %lld rows)\n",
                 bytes / 1048576.0, (long long) opt.n_ctx, (long long) dsv4_raw_rows());

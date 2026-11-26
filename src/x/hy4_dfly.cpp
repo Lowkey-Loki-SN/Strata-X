@@ -208,7 +208,7 @@ bool Engine::Impl::load_dfly(std::string& err) {
         !mapped(kTmax * sizeof(float), (void**) &b.prob_h, (void**) &b.prob_d) ||
         !mapped(kTmax * sizeof(int32_t), (void**) &b.cell_h, (void**) &b.cell_d))
         return fail(err, kDy + "its mapped buffers");
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: DFly2 drafter loaded: %.2f GiB of weights on GPU %d, its block's cells %d a row\n", total / 1073741824.0,
                 lg.dev, b.stride);

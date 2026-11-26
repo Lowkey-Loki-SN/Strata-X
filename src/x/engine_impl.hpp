@@ -1118,13 +1118,21 @@ struct Engine::Impl {
     std::vector<int> ldev;
     Stage& stage_of(int64_t il) { return *stages[(size_t) ldev[(size_t) il]]; }
     Stage& last_stage() { return *stages.back(); }
-    mutable int cur_dev = -1;
-    void set_dev(int dev) {
-        if (dev != cur_dev) {
+    /// moex (2026-11-26): the device the CALLING THREAD made current. CUDA's current device is per thread, and one cached int
+    /// for the engine let a thread skip its cudaSetDevice because another thread had set that device (the prompt stages'
+    /// threads and the head over both GPUs call set_dev too). reset_dev_cache() forgets it, on the calling thread.
+    static int& dev_cache() {
+        static thread_local int d = -1;
+        return d;
+    }
+    void set_dev(int dev) const {
+        int& c = dev_cache();
+        if (dev != c) {
             cudaSetDevice(dev);
-            cur_dev = dev;
+            c = dev;
         }
     }
+    void reset_dev_cache() const { dev_cache() = -1; }
 
     // the VRAM expert tier: uniform slots of the largest blob; a residency table; decayed routing counts
     int64_t n_slots = 0;

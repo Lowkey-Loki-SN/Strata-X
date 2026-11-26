@@ -413,7 +413,7 @@ void read_bufs_release(Engine::Impl& m) {
             g.h_hand_rows = 0;
         }
     }
-    m.cur_dev = -1;
+    m.reset_dev_cache();
     fprintf(stderr, "strata-x serve: the read's pinned buffers given back: %.2f GiB in %.0f ms\n", freed / 1073741824.0,
             ms_since(t0));
 }

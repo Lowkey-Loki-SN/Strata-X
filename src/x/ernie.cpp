@@ -289,7 +289,7 @@ bool Engine::Impl::bind_layers_ernie(std::string& err) {
         }
         if (!ok) return false;
     }
-    cur_dev = -1;
+    reset_dev_cache();
     rope_pc = dsv4_rope_pc(hp.crope_base, hp.rope_scale, 1.0f, (int) hp.n_ctx_orig, hp.beta_fast, hp.beta_slow);
     return true;
 }
@@ -383,7 +383,7 @@ bool Engine::Impl::alloc_state_ernie(std::string& err) {
                 stages[si]->bf16_f32_n = need[si];
             }
     }
-    cur_dev = -1;
+    reset_dev_cache();
     if (opt.verbose)
         fprintf(stderr, "strata-x: ERNIE-5.5 attention state %.1f MiB for %lld positions (HCA raw rings of %lld rows)%s\n",
                 bytes / 1048576.0, (long long) opt.n_ctx, (long long) dsv4_raw_rows(),

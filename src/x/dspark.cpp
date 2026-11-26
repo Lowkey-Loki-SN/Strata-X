@@ -313,7 +313,7 @@ bool Engine::Impl::load_dspark(std::string& err) {
         !(lg.dsp_logits = lg.dalloc<float>((size_t) kTmax * V, err)) || !(lg.dsp_bias = lg.dalloc<float>((size_t) V, err)) ||
         !(lg.dsp_dprev = lg.dalloc<int32_t>((size_t) kTmax + 1, err)) || !(lg.dsp_dprob = lg.dalloc<float>((size_t) kTmax, err)))
         return false;
-    cur_dev = -1;
+    reset_dev_cache();
     dsp = std::move(d);
     return true;
 }

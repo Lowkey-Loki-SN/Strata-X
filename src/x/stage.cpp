@@ -257,6 +257,11 @@ void carve_into(const Hparams& hp, int64_t n_ctx, int gqa_chunks, Scratch& x, ui
             for (int64_t il = 0; il < hp.n_layer_all; ++il)
                 most = std::max<int64_t>(most, hp.H_of(il) * (hp.is_swa(il) ? ch_swa : ch_sparse));
             x.hpart = c.take<float>(hy4_attend_scratch_bytes(1, (int) most, sub) / sizeof(float));
+        } else {
+            // moex (2026-11-26): a prompt sub-batch takes none. The prompt path's Scratch lives on, so without this a read of
+            // more than kTmax rows kept the last short read's pointer, into that read's loan, and its sub-batches of kTmax
+            // rows or fewer wrote and read their split-K partials there (ernie_dsa / hy4.cpp: `T <= kTmax && hpart`)
+            x.hpart = nullptr;
         }
     }
     if (ernie) x.ecnt = c.take<int32_t>((size_t) sub);
