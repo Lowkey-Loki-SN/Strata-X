@@ -2,8 +2,8 @@
 
 Strata-X is a fork of [Strata](https://github.com/Niko1221/Strata) that runs more of the large mixture-of-experts models
 on one PC, with the same design: the dense part and the most-used experts in VRAM, the other experts pinned in RAM and
-computed by a CPU pool, and the prompt read by streaming the experts through VRAM. Upstream's own path (Qwen3.8-Flash-Next,
-`README.md`, `setup.py`) is kept as it is; this folder documents what the fork adds.
+computed by a CPU pool, and the prompt read by streaming the experts through VRAM. Upstream's own path (Qwen3.8-Flash-Next:
+`setup.py`, `docs/`) is kept as it is; the checkout's `README.md` is the fork's, and this folder documents what it adds.
 
 ## What the fork adds
 
@@ -37,7 +37,7 @@ cmake --build build-dsv41 --target strata-x
 
 1. Get model files that load (`moex/docs/QUANTS.md`; `python3 serve/quant_check.py --hf ORG/REPO FOLDER` checks a Hugging Face
    set from its headers before you download it).
-2. Export its tokenizer: `python3 tools/strata_tokenizer_families.py --gguf FIRST_SHARD.gguf --out "$STRATA_X_DATA/tokenizers/<family>"`
+2. Export its tokenizer: `"$STRATA_PYTHON" tools/strata_tokenizer_families.py --gguf FIRST_SHARD.gguf --out "$STRATA_X_DATA/tokenizers/<family>"`
    (ERNIE-5.5's GGUF carries none: `moex/docs/QUANTS.md` has its `--hf-json` command).
 3. Make a run config from its template (`configs/README.md`).
 4. Start the server, from the checkout's folder:

@@ -2988,7 +2988,7 @@ def engine_args(cfg: dict) -> list[str]:
         if isinstance(seg, int) and not isinstance(seg, bool) and seg > 0 and "--vram-segment-mib" not in args:
             args += ["--vram-segment-mib", str(seg)]
     args += parallel_args(cfg, args)
-    return learned_profile_args(cfg, args)
+    return missing_profile_dropped(cfg, learned_profile_args(cfg, args))
 
 
 PARALLEL_MAX = 8      # the engine's batch window holds at most 8 rows (kVerifyMaxT); --batch-mtp waves more through it
@@ -3100,6 +3100,22 @@ def learned_profile_args(cfg: dict, args: list[str]) -> list[str]:
             print(f"[strata] expert profile: the learned one ({save}) is another pack's - starting from the config's ({args[i]})",
                   flush=True)
     return args
+
+
+def missing_profile_dropped(cfg: dict, args: list[str]) -> list[str]:
+    """moex: a --expert-profile that names no file yet starts the engine without one, where the engine would refuse to start
+    ("cannot read ..."). A run config made from a template (moex/configs) names the profile its first run learns and saves
+    ("expert_profile_save"), so on that first run the file is not there. A file that is there is passed unchanged."""
+    if "--expert-profile" not in args[:-1]:
+        return args
+    i = args.index("--expert-profile") + 1
+    here = cfg.get("cwd") or "."
+    if os.path.exists(args[i] if os.path.isabs(args[i]) else os.path.join(here, args[i])):
+        return args
+    save = cfg.get("expert_profile_save")
+    then = f" (this run's routing is saved to {save} and the next start begins from it)" if isinstance(save, str) and save.strip() else ""
+    print(f"[strata] expert profile: {args[i]} is not there yet - the engine starts without one{then}", flush=True)
+    return args[:i - 1] + args[i + 1:]
 
 
 def hip_visible(cfg: dict) -> list[int]:

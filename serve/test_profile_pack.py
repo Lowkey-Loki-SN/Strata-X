@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from serve.server import learned_profile_args, pack_digest, profile_pack, profile_shape  # noqa: E402
+from serve.server import learned_profile_args, missing_profile_dropped, pack_digest, profile_pack, profile_shape  # noqa: E402
 
 HEAD = "# strata-x expert profile: n_layer 40 n_expert 384, 15360 experts, 10 decode routings this run, 5 in VRAM (layer expert count)"
 
@@ -65,6 +65,20 @@ class ProfilePack(unittest.TestCase):
 
     def test_no_learned_profile(self):
         self.assertEqual(self.used(self.args()), str(self.base))
+
+    def test_first_start_from_a_template(self):   # neither the config's profile nor a learned one there yet
+        self.base.unlink()
+        args = missing_profile_dropped({"cwd": str(self.d), "expert_profile_save": str(self.learned)}, self.args())
+        self.assertNotIn("--expert-profile", args)
+        self.assertEqual(args[args.index("--expert-profile-save") + 1], str(self.learned))   # the run still saves one
+        self.assertIn("--pack", args)
+
+    def test_a_profile_that_is_there_is_kept(self):
+        args = self.args()
+        self.assertEqual(missing_profile_dropped({"cwd": str(self.d)}, args), args)
+        relative = ["--expert-profile", "base.txt"]                     # relative to the config's cwd
+        self.assertEqual(missing_profile_dropped({"cwd": str(self.d)}, relative), relative)
+        self.assertEqual(missing_profile_dropped({"cwd": str(self.d)}, ["--expert-profile", "none.txt"]), [])
 
     def test_a_profile_from_before_the_rename(self):   # strata-glm's header (the engine's name until 2026-11-26)
         self.learned.write_text(HEAD.replace("strata-x", "strata-glm") + "\n14 146 1.0\n", encoding="utf-8")

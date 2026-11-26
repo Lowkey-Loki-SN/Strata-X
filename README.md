@@ -1,220 +1,210 @@
 <h1 align="center">Strata-X</h1>
 
-> **Strata-X is a fork of [Strata](https://github.com/Niko1221/Strata).** It adds `strata-x`, an engine for
-> GLM-5.3-Flash, DeepSeek-V4-Flash, DeepSeek-V4.1-Flash, MiMo-V2.6-Flash, Hy4-flash and ERNIE-5.5-Flash on the same kind of
-> PC: **start at [`moex/README.md`](moex/README.md)**, and check [`moex/docs/QUANTS.md`](moex/docs/QUANTS.md) for which
-> model files each one runs before downloading any. Everything below is upstream Strata's own README (Qwen3.8-Flash-Next),
-> which the fork keeps as it is; the translations are upstream's too.
+<p align="center"><b>GLM-5.3, DeepSeek-V4 / V4.1, MiMo-V2.6, Hy4 and ERNIE-5.5 on one PC</b><br>
+NVIDIA graphics cards and system RAM · Linux · a fork of <a href="https://github.com/Niko1221/Strata">Strata</a> · MIT License</p>
 
-**English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Português](README.pt-BR.md)
+Strata-X runs large mixture-of-experts models, too big for any graphics card, on a desktop PC. It is a fork of
+[Strata](https://github.com/Niko1221/Strata), which does this for Qwen3.8-Flash-Next, and it keeps Strata's design: the
+dense part of the model and its most-used experts stay on the graphics cards, the other experts are pinned in RAM and the
+processor computes them at the same time, and a prompt is read by streaming the experts through the cards. Its engine,
+`strata-x`, runs six model families. The server in front of it is Strata's: OpenAI- and Anthropic-compatible, with a web
+app.
 
-<p align="center"><b>Run a 125-billion-parameter AI model on your own gaming PC</b><br>
-NVIDIA or AMD graphics card (12 GB or more) · Windows or Linux · free and open source</p>
+Strata-X is one person's fork, built and measured on one machine: two RTX 3080 20 GB cards (power-limited to 180 W), 125 GiB
+of RAM, a 20-core Xeon Gold 6148 and one NVMe drive. Other machines are untested. There is no installer: you build the
+engine, get a model's files and make its run config, as below.
 
-<p align="center"><a href="https://github.com/Niko1221/Strata/releases/download/v0.1.10/Pagoda.mp4"><img src="docs/media/pagoda-preview.webp" width="720" alt="A voxel pagoda garden that Strata's model wrote, running in the browser"></a><br>
-<sub>A voxel pagoda garden, 1 shot prompt running on an RTX 5070 with Strata (IQ3_S, 128K context) ·
-<a href="https://github.com/Niko1221/Strata/releases/download/v0.1.10/Pagoda.mp4">full video (49 s)</a></sub></p>
+## Models
 
-Strata runs **[Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)** on a normal PC. This is a
-large, smart AI model that usually needs a server. It chats, writes code, reads pictures and works with your apps
-and coding agents. Nothing leaves your PC.
+| Model | Files it runs from | Context | Images | Drafter in the run config |
+| --- | --- | --- | --- | --- |
+| GLM-5.3-Flash | llama.cpp's conversion (`glm5-next` / `glm5next`) | 256K | yes | its MTP block |
+| DeepSeek-V4-Flash | mainline llama.cpp's `deepseek4` conversion | 256K | yes | its MTP file |
+| DeepSeek-V4.1-Flash | a GGUF set (mainline's or Unsloth's), or this repo's dense GGUF and expert pack | 1M | yes | none |
+| MiMo-V2.6-Flash | llama.cpp's `mimo2` conversion | 256K | yes | none |
+| Hy4-flash | [AngelSlim's GGUF sets](https://huggingface.co/AngelSlim/Hy4-flash-GGUF) | 1M | yes | DFly2 |
+| ERNIE-5.5-Flash | this repo's converter, or [the set run here](https://huggingface.co/Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF) | 1M | no | none |
 
-## How fast is it?
+"Context" is what the run configs here set. A drafter guesses a few tokens that the model then checks at once: the same
+text, sooner, where the guesses are good.
 
-We measured it on two ordinary gaming PCs. A token is about ¾ of a word.
+**Before you download a model**, read [`moex/docs/QUANTS.md`](moex/docs/QUANTS.md): which files and quantization types
+each model runs, which load only with a setting, and what is not supported yet. A Hugging Face set can be checked from
+its headers alone, before you download it:
 
-- **Writes answers:** how fast the reply appears in a short chat. 60 tokens per second is faster than you can read.
-- **Reads your prompt:** how fast it takes in what you send (here a 32K-token document, code or chat history).
+```bash
+python3 serve/quant_check.py --hf ORG/REPO FOLDER
+```
 
-<table>
-<tr><th>NVIDIA: RTX 5070 (12 GB), Ryzen 5 7600, 64 GB RAM</th><th>AMD: RX 9070 XT (16 GB), Ryzen 9 3900X, 47 GB RAM</th></tr>
-<tr><td>
+The server runs the same check on a run config's model files before it starts the engine, and names any weight the engine
+has no kernel for.
 
-| Size | Writes answers | Reads your prompt |
-| --- | ---: | ---: |
-| **Q2_0** | 94 tokens/s | 2,650 tokens/s |
-| **IQ2_XS** | 79 tokens/s | 2,090 tokens/s |
-| **IQ3_XXS** | 62 tokens/s | 1,750 tokens/s |
-| **IQ3_S** | 53 tokens/s | 1,620 tokens/s |
-| **Coder** | 55 tokens/s | 2,180 tokens/s |
+## How fast is it here?
 
-</td><td>
+Measured on the machine above, each in its run config's settings. A token is about ¾ of a word.
 
-| Size | Writes answers | Reads your prompt |
-| --- | ---: | ---: |
-| **Q2_0** | 60 tokens/s | 1,160 tokens/s |
-| **IQ2_XS** | 52 tokens/s | 1,110 tokens/s |
-| **Coder** | 44 tokens/s | 1,420 tokens/s |
+| Model, files | Writes an answer | Reads a prompt | Measured |
+| --- | ---: | ---: | --- |
+| ERNIE-5.5-Flash, the IQ3_XXS / IQ4_XS set | 32.8 tokens/s | 591 tokens/s (20,582 tokens) | 2026-11-25 |
+| Hy4-flash, AngelSlim's Q4_K_M, DFly2 | 34.5-35.7 tokens/s | 627 tokens/s (250,509 tokens) | 2026-11-19 |
+| DeepSeek-V4.1-Flash, Unsloth's UD-Q2_K_XL experts | 21.2 tokens/s | 16K tokens in 46.1 s | 2026-11-10 |
+| DeepSeek-V4.1-Flash, the release's MXFP4 experts | 11.3-13.2 tokens/s | 16K tokens in 74.2 s | 2026-11-09/10 |
+| MiMo-V2.6-Flash, an SX-124G set | 26.2 tokens/s | 8K tokens in 15.8-16.0 s | 2026-10-13 |
+| GLM-5.3-Flash, Unsloth's UD-IQ3_XXS, MTP | 21.4 tokens/s | 8K tokens in 16.7-16.9 s | 2026-10-13 |
+| DeepSeek-V4-Flash, UD-IQ3_S, MTP | 24.6 tokens/s | 549 tokens/s (8K tokens) | 2026-10-10 |
 
-</td></tr>
-</table>
-
-NVIDIA: Q2_0 with engine 0.1.36, the other rows with 0.1.26 (4K answers, 32K prompts). The full tables are in
-[DETAILS.md](docs/DETAILS.md#speed-measured). A card with more VRAM is faster: an RTX 3090 (24 GB) should write
-about 100-140 tokens per second. Long chats and other cards: [speed of each model](docs/MODELS.md#how-fast-is-each-size),
-[community results](docs/COMMUNITY_BENCHMARKS.md).
-
-<p align="center"><a href="https://buymeacoffee.com/strataengine"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"></a><br>
-<sub>Strata is free. If it runs well on your PC, a coffee keeps the work on it going.</sub></p>
+The prompts, their lengths and the runs differ from row to row, and a long conversation writes slower (Hy4-flash
+25.4-32.8 tokens/s at 250K-316K tokens). Each number, with how it was measured, is in the notes:
+[ERNIE55_PLAN.md](moex/docs/ERNIE55_PLAN.md) §8, [HY4_PORT.md](moex/docs/HY4_PORT.md),
+[DSV41_PLAN.md](moex/docs/DSV41_PLAN.md) §72-§76, [PORT_AUDIT_ALL.md](moex/docs/PORT_AUDIT_ALL.md) §5 and
+[MXFP4.md](moex/docs/MXFP4.md).
 
 ## What you need
 
 | | |
 | --- | --- |
-| **Graphics card** | **NVIDIA** GeForce RTX 20, 30, 40 or 50 series, or **AMD** Radeon RX 7900 XT / XTX, RX 7800 XT / 7700 XT, RX 9060 XT, RX 9070 / 9070 XT, Radeon AI PRO R9700 or RX 6800 / 6900 series. It needs **12 GB of VRAM or more**. |
-| **RAM** | 32 GB or more. Your RAM decides [which model](#which-model-should-i-pick) fits. 64 GB runs every size. |
-| **Disk** | About 80 GB free. Use an SSD if you can: the first start is much faster. |
-| **System** | Windows 10 / 11 or Linux, and a current graphics driver from NVIDIA or AMD. |
+| **Graphics card** | **NVIDIA**, with CUDA. Built and run here on RTX 30 cards (compute capability 8.6); other generations are untested. One card or two: the run configs here split the layers over two. |
+| **RAM** | The experts that do not fit on the cards are pinned in RAM. ERNIE-5.5's set, 126 GiB of files, runs here on the two 20 GB cards and 125 GiB of RAM. DeepSeek-V4.1 can also read experts from an NVMe drive while it answers (its SSD tier). |
+| **System** | Linux. The engine and the fork's scripts were written and run on Linux only. |
+| **To build** | The CUDA toolkit, CMake, Ninja, GCC and git (here CUDA 13.3, CMake 3.28 and GCC 13.3), and Python 3.10 or newer for the server. |
 
-The installer sets up everything else. Two or three cards can share the model ([multi-GPU](docs/MULTI_GPU.md)).
+## How to run
 
-Experimental, written and tested by community members on their own machines:
+These steps run ERNIE-5.5-Flash, whose files are all on Hugging Face. The other models take the same steps with their own
+files ([the table below](#the-other-models)).
 
-- **Older graphics cards** (Tesla P40 / V100, GTX 10, Radeon VII / MI50, RX 6700 XT, RX 5500 XT): [Older GPUs](docs/OLDER_GPUS.md).
-- **Intel Arc**, built from source on Linux: [Intel Arc](docs/INTEL_ARC.md).
-- **AMD Ryzen AI Max (Strix Halo)**, built from source on Linux: [Strix Halo](docs/STRIX_HALO.md).
-- **Older processors without AVX2**: they work, but slowly. [Older CPUs](docs/INSTALL.md#older-cpus-experimental).
+**1. Build the engine.** CMake fetches the pinned llama.cpp it builds on, and applies `moex/patches/llama.cpp/` itself.
+Set `CMAKE_CUDA_ARCHITECTURES` to your card's: 86 is the RTX 30 series.
 
-The full list: [docs/INSTALL.md](docs/INSTALL.md#what-you-need).
-
-## Install
-
-### Let your AI set it up
-
-Do you use an AI coding assistant (Claude Code, Cursor, Codex, GitHub Copilot, ...)? Paste this into it:
-
-```text
-Set up Strata on this PC for me: https://github.com/Niko1221/Strata - follow docs/AI_SETUP.md in that repository.
+```bash
+git clone https://github.com/Lowkey-Loki-SN/Strata-X.git
+cd Strata-X
+cmake -S . -B build-dsv41 -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTRATA_ENABLE_CUDA=ON \
+      -DCMAKE_CUDA_ARCHITECTURES=86 -DSTRATA_MOEX_KQUANTS=ON -DSTRATA_NATIVE_EXPERTS=ON
+cmake --build build-dsv41 --target strata-x
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt huggingface_hub
 ```
 
-It checks your graphics card, RAM and disk and picks the model that fits. Then it installs and starts it and tells
-you how to connect your apps. AI tools can also install, start and stop Strata through its
-[MCP server](docs/MCP_SERVER.md).
+**2. Set the folders**, in every new terminal. `moex/env.sh` finds the checkout and puts the rest beside it: `../Models`
+for model files, `../Strata-X-data` for tokenizers, profiles and saved conversations, and the Python in `.venv`. Each can
+be set before you source it ([Paths](moex/README.md#paths)).
 
-### Or do it yourself
+```bash
+. moex/env.sh
+```
 
-[Download Strata](https://github.com/Niko1221/Strata/archive/refs/heads/main.zip) and unzip it (or `git clone` it).
-**Windows:** double-click **`START-HERE.bat`**. **Linux:** run **`./setup.sh`** in the Strata folder.
+**3. Download the model** (three files, 135 GB) and the release's tokenizer. If Hugging Face asks, accept the release's
+license on its page and log in with `.venv/bin/hf auth login`.
 
-The steps are the same for NVIDIA and AMD. The installer finds your card and sets up the right engine for it. It
-asks you a few questions:
+```bash
+.venv/bin/hf download Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF --include "*.gguf" \
+    --local-dir "$STRATA_MODELS/ernie55-gguf"
+.venv/bin/hf download baidu/ERNIE-5.5-Flash-Preview-FP8 tokenizer.json \
+    --local-dir "$STRATA_MODELS/HF/ERNIE-5.5-Flash-Preview-FP8"
+```
 
-- which model and which size,
-- how much context (how much text the model keeps in mind),
-- whether it should read pictures.
+**4. Export the tokenizer** into the folder the run config reads:
 
-Press Enter each time for the recommended answer. Then it downloads the model (about 70 GB) and starts it. If the
-download stops, run it again: it continues where it left off. Your browser opens the Strata app at
-`http://127.0.0.1:8080`.
+```bash
+"$STRATA_PYTHON" tools/strata_tokenizer_families.py --hf-json "$STRATA_MODELS/HF/ERNIE-5.5-Flash-Preview-FP8/tokenizer.json" \
+    --pre ernie55 --roles bos=2,eos=8,unk=0,pad=0 --eog 2,8 --out "$STRATA_X_DATA/tokenizers/ernie55"
+```
 
-> **While the model starts, your PC can be slow or stop responding for 1-3 minutes** (longest the first time).
-> Strata loads 35-55 GB into your RAM and locks part of it for the graphics card. This is normal. Wait, and don't
-> close the window. The window shows what Strata is doing.
+**5. Make the run config** from its template in [`moex/configs/`](moex/configs/README.md). This fills in the folders; the
+template already names the files of step 3.
 
-**Next time**, run `START-HERE.bat` (or `./setup.sh`) again. It starts right away and downloads nothing twice. Close
-its window to stop the model. `UPDATE.bat` (`./update.sh`) updates Strata without starting it. Updating, Docker,
-several cards, where the files go and every option: [docs/INSTALL.md](docs/INSTALL.md).
+```bash
+sed -e "s#<STRATA_X_ROOT>#$STRATA_X_ROOT#g" -e "s#<STRATA_X_DATA>#$STRATA_X_DATA#g" \
+    -e "s#<STRATA_MODELS>#$STRATA_MODELS#g" -e "s#<STRATA_AI_DIR>#$STRATA_AI_DIR#g" \
+    moex/configs/strata-ernie55.json > strata-ernie55.json
+```
 
-**Is it fast on your PC?** Run `BENCH.bat` (`./bench.sh`): about 5-10 minutes, it measures chat, 4K/16K prompts and an agent-style session with your own settings and writes a report to share ([how](docs/COMMUNITY_BENCHMARKS.md#run-the-benchmark)).
+Its settings (the layers split over two cards, expert slots, RAM headroom, threads) were tuned on the machine above. On
+other hardware, start from them.
 
-## Which model should I pick?
+**6. Start the server:**
 
-The installer recommends one for your RAM. The same model comes in several sizes, compressed more or less. Smaller
-sizes are faster. Larger sizes are a bit smarter.
+```bash
+./launch-ernie55-flash.sh
+```
 
-| Your RAM | Take | Why |
-| --- | --- | --- |
-| **32 GB** | **Coder** | it fits 32 GB, and it is made for code (with a 24 GB card, Q2_0 and IQ2_XS run too) |
-| **48 GB** | **IQ2_XS** (or Q2_0, the fastest) | the larger sizes do not fit |
-| **64 GB** | **IQ2_XS** (recommended), or IQ3_XXS / IQ3_S | every size fits; IQ3_S is the best and the slowest |
-| **96 GB or more** | **IQ3_S**, or Unsloth's UD-IQ4_XS (~4-bit) | room for the largest sizes with everything else open |
+The launcher first checks that the files, the tokenizer and the engine are there and that no other Strata server runs;
+`"$STRATA_PYTHON" serve/server.py --engine strata --config strata-ernie55.json` starts the same server without those
+checks. It serves on `127.0.0.1:1234` until you press Ctrl+C. The first start reads the model's files into RAM and has no
+expert profile yet: the run learns which experts are used most, saves that, and later starts begin from it.
 
-- **[Coder](docs/MODELS.md#coder):** a coding version with half of the experts removed. It reaches 91% of the full
-  model's SWE-bench Verified score (measured by its authors) and fits 32 GB of RAM. It is weaker outside code,
-  including Chinese and other CJK text (#438). For those, take Q2_0, IQ2_XS or IQ3_S, which keep every expert.
-- **[Swift 1.5](docs/MODELS.md#swift-15):** a fine-tune that thinks for a much shorter time before it answers. You
-  get the answer sooner, at about the same quality.
-- **[Unsloth UD-IQ4_XS](docs/MODELS.md#unsloth-ud-iq4_xs):** Unsloth's ~4-bit version, between IQ3_S and
-  UD-Q4_K_XL in quality. A 94 GB download. With less than ~80 GB of RAM, Strata reads part of it from the SSD
-  while it answers, so it is slower there (an NVMe SSD helps).
-- **[Unsloth UD-Q4_K_XL](docs/MODELS.md#unsloth-ud-q4_k_xl-experimental)** (experimental): the closest to the full
-  model. But Strata reads most of it from the SSD while it answers, so it writes only 7-8.5 tokens/s on a 64 GB PC.
-- **[OrcaRouter's Uncensored IQ3_XXS](docs/MODELS.md#orcarouter-uncensored-iq3_xxs):** you set it up by hand. It is
-  not in the installer's menu.
+### The other models
 
-Sizes, downloads and what fits where: [docs/MODELS.md](docs/MODELS.md). To add another model later, run
-`SETUP.bat` (Linux: `./setup.sh --setup`).
+Each has a template in `moex/configs/` that names its files and settings; if your files are somewhere else, change `-m`
+and the other paths in the run config. Its tokenizer comes from its first GGUF file, into the folder below:
+
+```bash
+"$STRATA_PYTHON" tools/strata_tokenizer_families.py --gguf FIRST_FILE.gguf --out "$STRATA_X_DATA/tokenizers/FOLDER"
+```
+
+| Model | Template (launcher) | Tokenizer folder | The files it names | More |
+| --- | --- | --- | --- | --- |
+| Hy4-flash | `strata-hy4.json` (`launch-hy4-flash.sh`) | `hy4` | [AngelSlim/Hy4-flash-GGUF](https://huggingface.co/AngelSlim/Hy4-flash-GGUF)'s Q4_K_M; for pictures its mmproj and the release's `processor_config.json`; the DFly2 drafter, made from [tencent/Hy4-flash](https://huggingface.co/tencent/Hy4-flash)'s last file and `config.json` by `moex/tools/hy4/dfly_to_gguf.py` | [HY4_PORT.md](moex/docs/HY4_PORT.md) |
+| DeepSeek-V4.1-Flash | `strata-dsv41-ud-q2kxl.json` (`launch-dsv4.1-flash-ud-q2kxl.sh`) | `deepseek4` | [unsloth/DeepSeek-V4.1-Flash-1017-GGUF](https://huggingface.co/unsloth/DeepSeek-V4.1-Flash-1017-GGUF)'s UD-Q2_K_XL experts, with the dense part and the MXFP8 Engram table of the release's GGUF conversion by `moex/tools/dsv41/gguf_convert.py` (mainline llama.cpp's converter, [deepseek-ai/DeepSeek-V4.1-Flash-1017](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017)); for pictures the release's own encoder | [QUANTS.md](moex/docs/QUANTS.md), [DSV41_PLAN.md](moex/docs/DSV41_PLAN.md) §68, [VISION.md](moex/docs/VISION.md) |
+| DeepSeek-V4.1-Flash | `strata-dsv41-native.json` (`launch-dsv4.1-flash.sh`) | `deepseek4` | that conversion, with the release's MXFP4 experts as a pack (`moex/tools/dsv41/`) | the same |
+| GLM-5.3-Flash | `strata-glm.json` | `glm5` | Unsloth's UD-IQ3_XXS, and an mmproj of type `glm5v` for pictures | [QUANTS.md](moex/docs/QUANTS.md), [VISION.md](moex/docs/VISION.md) |
+| DeepSeek-V4-Flash | `strata-dsv4.json` | `deepseek4` | tarruda's Q3_K of the Vision-Exp release once its BF16 head, compressor and indexer-compressor weights are re-quantized, ggml-org's MTP file, and the release's mmproj | [QUANTS.md](moex/docs/QUANTS.md) |
+| MiMo-V2.6-Flash | `strata-mimo.json` | `mimo2` | an SX-124G set, and an mmproj made by `moex/tools/convert_mimo_mmproj.py` | [QUANTS.md](moex/docs/QUANTS.md), [VISION.md](moex/docs/VISION.md) |
 
 ## Using it
 
-<p align="center"><img src="docs/media/runpagoda.png" width="900" alt="The Strata app's Monitor tab next to a coding agent"><br>
-<sub>The Strata app's <b>Monitor</b> (left) while a coding agent writes the pagoda garden from the video (right)</sub></p>
+- **Your apps and coding agents:** an OpenAI-compatible provider with the base URL **`http://127.0.0.1:1234/v1`**. The
+  model's name is its run config's `model_name` (`ernie-5.5-flash`, `deepseek-v4.1-flash`, ...).
+  - Apps that use Anthropic's API: `http://127.0.0.1:1234/v1/messages` (Claude Code:
+    `ANTHROPIC_BASE_URL=http://127.0.0.1:1234`).
+  - Apps that use the OpenAI Responses API: `/v1/responses`.
+- **In the browser:** `http://127.0.0.1:1234` opens Strata's app: chat, and a live monitor of the model and the machine.
+- **Thinking:** a client's `enable_thinking` and reasoning effort are mapped to the levels each model's chat template
+  knows (`serve/families.py`).
+- **Pictures:** attach them in the app or send them through the API, once the model's image encoder is set up
+  ([`moex/docs/VISION.md`](moex/docs/VISION.md)).
+- **From another PC or a container:** start the server with `--host ADDRESS --api-key SECRET`. Never serve beyond
+  `127.0.0.1` without a key.
 
-- **In the browser:** open `http://127.0.0.1:8080`. It has **Chat**, a live **Monitor** of the model and your
-  GPU/CPU/RAM, and **About** with the settings and addresses.
-- **Your apps and coding agents:** add an "OpenAI-compatible" provider with the base URL
-  **`http://127.0.0.1:8080/v1`**. Any API key and any model name work.
-  - Apps that use Anthropic's API: `http://127.0.0.1:8080/v1/messages` (Claude Code:
-    `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`).
-  - Codex CLI and other apps that use the OpenAI Responses API: `/v1/responses`
-    ([setup](docs/DETAILS.md#the-responses-api-and-codex-cli)).
-- **Thinking:** choose **off, low, medium or high** in the chat menu or in your app's "reasoning effort". Off is the
-  fastest. High is best for hard questions.
-- **Pictures:** say yes to "Images?" in setup. Then click **Picture** in the chat, or attach pictures in your app.
-  AMD cards read pictures on Linux through the processor; on Windows they can't yet.
-- **From your phone or another PC:** `START-HERE.bat --setup --host 0.0.0.0 --api-key <secret>`. Always set a key.
-- **One request at a time:** by default Strata answers one request, and the others wait. To answer several at once,
-  set `"parallel": 2` ([BATCHING.md](docs/BATCHING.md)). On a 12 GB card this makes each answer slower.
-- **Long prompts:** Strata reads the first message of a chat in full, about 1 minute per 30,000 tokens. Follow-up
-  messages start in seconds.
+The server's API and settings are upstream Strata's: [`docs/DETAILS.md`](docs/DETAILS.md#using-it).
 
-More: [where your chats are stored](docs/INSTALL.md#where-things-are-stored), [the API](docs/DETAILS.md#using-it).
+## The repository
 
-## Something went wrong?
+| Where | What |
+| --- | --- |
+| [`moex/README.md`](moex/README.md) | The fork's own README: what it adds, the paths, the tests and the index of the notes |
+| [`moex/docs/QUANTS.md`](moex/docs/QUANTS.md) | Which model files and quantization types each model runs |
+| `src/x/`, `include/strata/x/` | The engine, `strata-x` |
+| `serve/` | The server (upstream's), each model family's chat template, reply parser and request dialect (`families.py`, `family_templates/`, `family_parsers.py`), and the quantization check (`quant_check.py`) |
+| [`moex/configs/`](moex/configs/README.md) | The run-config templates |
+| `launch-*.sh` | The launchers of the run configs this machine uses |
+| `moex/docs/` | The engineering notes: each model's port, every measurement and the decisions, by date |
+| `moex/tools/` | GGUF converters (ERNIE-5.5's), DeepSeek-V4.1's expert packs, checks and benchmarks |
+| `moex/ref/`, `moex/tools/*/ref/` | The float reference models the engine's arithmetic is checked against |
+| `docs/`, `setup.py`, `START-HERE.bat`, `src/core/`, ... | Upstream Strata's own: its Qwen3.8-Flash-Next engine, installer and docs |
 
-- **My PC froze the first time Strata started.** This is normal while it loads the model. Wait, and don't close the
-  window. Still frozen after 10 minutes? Restart the PC, close other programs and try again, or pick a smaller size.
-- **It stopped while downloading or installing.** Run `START-HERE.bat` (or `./setup.sh`) again. It continues where
-  it stopped.
-- **It's very slow and the disk light keeps blinking, or it says "the engine stopped unexpectedly".** Your PC does
-  not have enough free RAM. Close other programs (browsers use a lot), or pick a smaller size (Q2_0 or IQ2_XS).
-- **It says port 8080 is already in use.** Strata is already running. Look for its window.
+**Tests:** `"$STRATA_PYTHON" -m unittest discover -s serve -p "test_*.py" -t .` runs the server's and the families' tests
+without a GPU; `ctest --test-dir build-dsv41` runs the kernels' parity tests on the GPU. The rest:
+[moex/README.md](moex/README.md#tests).
 
-More problems and their fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Still stuck? Open an
-[issue](https://github.com/Niko1221/Strata/issues) and attach `strata-<model>.log` from the Strata folder. Found a
-security problem? Report it privately: [SECURITY.md](SECURITY.md).
+## Strata and Qwen3.8-Flash-Next
 
-## How does it work?
+Strata-X keeps upstream Strata's engine, installer and docs for Qwen3.8-Flash-Next as they were merged at v0.1.43.1
+(2026-10-13), with some later fixes ported by hand. For that model, use [Strata](https://github.com/Niko1221/Strata)
+itself: its installer sets everything up, and its releases are current.
 
-Models like this one usually run on servers with hundreds of gigabytes of graphics memory. Your graphics card has
-12-24 GB. Strata makes the model fit by **sharing the work across your whole PC**. Think of a kitchen: the things
-you use all the time stay on the counter, and the rest waits in the pantry.
+## Reporting a problem
 
-<p align="center"><img src="docs/media/how-it-works.svg" width="860" alt="The model's 24,576 experts: the busiest on the graphics card, all of them in RAM, a lookup table on the SSD"></p>
-
-- **The model is a team of 24,576 small specialists ("experts").** Each word needs only 10 of them.
-- **Your graphics card** keeps the few thousand experts that are used most often. **Your RAM** holds all of them,
-  and **your processor** works on the rest at the same time. **Your SSD** holds a big lookup table.
-
-<p align="center"><img src="docs/media/guess-and-check.svg" width="860" alt="A small helper guesses the next words; the big model checks them all at once and keeps the right ones"></p>
-
-- **Guess, then check:** a small helper guesses the next few words. The big model checks them all at once. You get
-  the same answer, 1.6-1.8x sooner.
-- **Long texts are read in big pieces** (up to 8,192 tokens at a time), at over 1,000 tokens per second.
-
-The longer explanation: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md). Every part and its numbers:
-[the details](docs/DETAILS.md#how-it-works) and the [paper](docs/paper/Strata-Paper.pdf).
+Open an [issue](https://github.com/Lowkey-Loki-SN/Strata-X/issues) with the form that fits, and say which model files and
+run config you used. A security problem: report it privately ([SECURITY.md](SECURITY.md)). Before you change the code,
+read [AGENTS.md](AGENTS.md): one change per pull request, every number with what it was measured on.
 
 ## Credits and license
 
-The model is [Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) by the Qwen team. It was
-compressed by [ISTA-DASLab](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF), UkisAI (Swift 1.5)
-and Unsloth. Strata uses parts of [llama.cpp / ggml](https://github.com/ggml-org/llama.cpp). All credits:
-[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#credits). Strata is open source under the [MIT License](LICENSE). A few
-parts and every model have their own licenses ([which ones](docs/HOW_IT_WORKS.md#license)).
+Strata-X is built on [Strata](https://github.com/Niko1221/Strata) by Niko1221 and the Strata contributors, and on
+[llama.cpp / ggml](https://github.com/ggml-org/llama.cpp). The models are their makers': Z.ai's GLM-5.3-Flash,
+DeepSeek's V4-Flash and V4.1-Flash, Xiaomi's MiMo-V2.6-Flash, Tencent's Hy4-flash and Baidu's ERNIE-5.5-Flash, each under
+its own license. The GGUF sets `moex/docs/QUANTS.md` names are their makers' (Unsloth, AngelSlim, AesSedai, ggml-org and
+tarruda). Each model's arithmetic is checked against llama.cpp's or its release's reference code (the notes say how).
 
-## Support Strata
-
-Strata is free and open source. If it is useful to you, you can support its development:
-
-<p align="center"><a href="https://buymeacoffee.com/strataengine"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"></a></p>
+Strata-X is open source under the [MIT License](LICENSE), as Strata is.
