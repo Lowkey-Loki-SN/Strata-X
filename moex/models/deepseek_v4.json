@@ -1,0 +1,58 @@
+{
+ "model_type": "deepseek_v4",
+ "architecture": "DeepseekV4ForCausalLM",
+ "hidden": 4096,
+ "layers": 43,
+ "moe": {
+  "moe_layers": 43,
+  "dense_layers": 0,
+  "routed_experts": 256,
+  "top_k": 6,
+  "expert_intermediate": 2048,
+  "shared_experts": 1,
+  "shared_intermediate": 2048,
+  "scoring": "sqrtsoftplus",
+  "topk_method": "noaux_tc",
+  "routed_scaling": 1.5
+ },
+ "derived": {
+  "expert_params": 25165824,
+  "experts_total": 11008,
+  "routed_params_total": 277025390592,
+  "routed_active_params_per_token": 6492782592,
+  "shared_active_params_per_token": 1082130432
+ },
+ "attention": {
+  "per_layer": {
+   "window only": 2,
+   "sparse (compress 4)": 21,
+   "sparse (compress 128)": 20
+  },
+  "full": "compressed sparse attention (MLA-style latent, indexer)",
+  "heads": 64,
+  "kv_heads": 1,
+  "head_dim": 512,
+  "q_lora": 1024,
+  "rope_dim": 64,
+  "sliding_window": 128,
+  "indexer": {
+   "heads": 64,
+   "dim": 128,
+   "topk": 512
+  },
+  "compress_ratios": [
+   0,
+   4,
+   128
+  ]
+ },
+ "hyper_connections": {
+  "streams": 4,
+  "kind": "Sinkhorn (mHC)"
+ },
+ "mtp_layers": 3,
+ "ngram_ple": false,
+ "vision": true,
+ "vocab": 129280,
+ "max_context": 1048576
+}

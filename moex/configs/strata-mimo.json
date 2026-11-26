@@ -1,0 +1,38 @@
+{
+  "family": "mimo2",
+  "exe": "<STRATA_X_ROOT>/build-dsv41/strata-x",
+  "args": [
+    "-m",
+    "<STRATA_MODELS>/GGUFs/mimo-v2.6-flash/SX-124G/MiMo-V2.6-Flash-MOPD-SX-124G.gguf",
+    "--expert-profile",
+    "<STRATA_X_DATA>/mimo-expert-profile.txt",
+    "--max-context",
+    "262144",
+    "--resident-headroom-gib",
+    "20"
+  ],
+  "cwd": "<STRATA_X_ROOT>",
+  "tokenizer": "<STRATA_X_DATA>/tokenizers/mimo2",
+  "model_name": "mimo-v2.6-flash",
+  "log": "<STRATA_X_ROOT>/strata-mimo.log",
+  "port": 1234,
+  "gpu": [
+    0,
+    1
+  ],
+  "layer_split": "27",
+  "expert_profile_save": "<STRATA_X_DATA>/mimo-expert-profile-learned.txt",
+  "open_browser": false,
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 64
+  },
+  "vision": {
+    "exe": "<STRATA_X_ROOT>/build-vision/bin/strata-vision",
+    "mmproj": "<STRATA_MODELS>/GGUFs/MMProj/strata-x/MiMo-V2.6-Flash-mmproj-bf16.gguf",
+    "model": "<STRATA_MODELS>/GGUFs/mimo-v2.6-flash/SX-124G/MiMo-V2.6-Flash-MOPD-SX-124G.gguf",
+    "gpu": false,
+    "threads": 20
+  }
+}

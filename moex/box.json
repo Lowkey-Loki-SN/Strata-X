@@ -1,0 +1,22 @@
+{
+ "_about": "The development box as Strata measured it on 2026-10-07 (Qwen3.8-Flash-Next UD-Q4_K_XL, 2x RTX 3080 layer split). Every number has its source.",
+ "usable_vram_gib": 39.16,        "_usable_vram_gib": "2 x 19.58 GiB, the engine's 'free of 19.58' after the desktop on GPU1",
+ "overhead_gib": 8.2,             "_overhead_gib": "39.16 - cache 24.34 - dense 4.52 - MTP 0.85 - KV window 0.81 - idle 0.43 (CUDA contexts, 2 x 700 MiB reserve, state + scratch)",
+ "ram_gb": 134.0,                 "_ram_gb": "125 GiB MemTotal",
+ "ram_other_gb": 20.0,            "_ram_other_gb": "OS + desktop + dsh/searxng (~10) + engine buffers and pinned KV (~5) + page-cache floor (~5)",
+ "gpu_bw_gbs": 760.0,             "_gpu_bw_gbs": "RTX 3080 20 GB GDDR6X spec; the split runs one card at a time per token",
+ "cpu_bw_gbs": [35.0, 50.0],      "_cpu_bw_gbs": "effective expert-kernel bandwidth band: 4-channel DDR4-2666 reads ~77 GB/s (glmbench/FINDINGS.md); Strata runs its AVX2 path here (no VNNI/VBMI)",
+ "pass_fixed_ms": [15.0, 25.0],   "_pass_fixed_ms": "calibrated: Strata Qwen code run = 30.0 ms per verify window (69.5 T/s x 2.09 tok/window); roofline parts 10.4 ms -> ~20 ms fixed (launches, GPU hand-off, recurrences, sampling)",
+ "mtp": {"tokens_per_pass": 2.09, "window": 2.525, "union_per_extra_token": 0.85,
+         "_mtp": "Strata Qwen code run: 4000 tokens, 2922 drafted / 2084 accepted -> 1916 passes; union: distinct experts per extra window token (diffuse routing ~0.85)"},
+ "live_adaptivity_miss_ratio": [1.0, 0.52], "_live_adaptivity": "proxy -> live: Qwen proxy 77% hit at 34% vs Strata live 86-90%: misses x0.52 at best, x1.0 if no uplift",
+ "measured_today_tps": {"qwen4_exp_text": 24.0, "glm5_next_text": 11.1, "deepseek_v4": 10.4, "mimo_v2": 11.5,
+                        "_src": "tabby/exllamav3 medians from run-*/logs (DSV4 3.04bpw, GLM 3.05bpw, MiMo Yamz 2.64bpw; Qwen 6.05bpw daily driver)"},
+ "strata_qwen_measured_tps": 69.5,
+ "gpu_dense_gb": {"qwen4_exp_text": 4.85, "deepseek_v4": 8.1, "glm5_next_text": 7.5, "mimo_v2": 5.0,
+                  "_src": "Qwen: engine log 4.52 GiB; DSV4: gguf_inventory of the local Q3_K GGUF (attention 5.41 + shared 1.15 + head ~1.06 + indexer/HC/router 0.5); GLM, MiMo: parameter counts from config.json at ~6-8 bpw (estimates)"},
+ "mtp_layer_gib": {"qwen4_exp_text": 0.85, "deepseek_v4": 2.1, "glm5_next_text": 2.1, "mimo_v2": 2.0,
+                   "_src": "Qwen measured (q2_0 experts); targets: one MTP layer's experts at ~2 bpw (256-288 x 25.2M) + its attention, estimate"},
+ "kv_window_gib": {"qwen4_exp_text": 0.81, "deepseek_v4": 0.2, "glm5_next_text": 0.3, "mimo_v2": 0.2,
+                   "_src": "Qwen measured (32768 cells x 13 layers fp16); targets: compressed/MLA/SWA caches are small - estimates"}
+}

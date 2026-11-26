@@ -1,0 +1,45 @@
+{
+  "family": "deepseek4",
+  "exe": "<STRATA_X_ROOT>/build-dsv41/strata-x",
+  "args": [
+    "-m",
+    "<STRATA_MODELS>/GGUFs/dsv4-vision/Q3_K-tarruda/DeepSeek-V4-Flash-Vision-Exp-Q3_K.gguf",
+    "--expert-profile",
+    "<STRATA_X_DATA>/dsv4-expert-profile.txt",
+    "--max-context",
+    "262144",
+    "--draft-mtp",
+    "<STRATA_MODELS>/GGUFs/MTP/dsv4-flash-orig/mtp-DeepSeek-V4-Flash-MXFP4.gguf",
+    "--spec",
+    "2",
+    "--coupled-draft",
+    "--spec-min-p",
+    "0.7",
+    "--resident-headroom-gib",
+    "20"
+  ],
+  "cwd": "<STRATA_X_ROOT>",
+  "tokenizer": "<STRATA_X_DATA>/tokenizers/deepseek4",
+  "model_name": "deepseek-v4-flash",
+  "log": "<STRATA_X_ROOT>/strata-dsv4.log",
+  "port": 1234,
+  "gpu": [
+    0,
+    1
+  ],
+  "layer_split": "24",
+  "expert_profile_save": "<STRATA_X_DATA>/dsv4-expert-profile-learned.txt",
+  "open_browser": false,
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 64
+  },
+  "vision": {
+    "exe": "<STRATA_X_ROOT>/build-vision/bin/strata-vision",
+    "mmproj": "<STRATA_MODELS>/GGUFs/dsv4-vision/mmproj-DeepSeek-V4-Flash-Vision-Exp-BF16.gguf",
+    "model": "<STRATA_MODELS>/GGUFs/dsv4-vision/Q3_K-tarruda/DeepSeek-V4-Flash-Vision-Exp-Q3_K.gguf",
+    "gpu": false,
+    "threads": 20
+  }
+}

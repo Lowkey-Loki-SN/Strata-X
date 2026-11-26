@@ -1,0 +1,59 @@
+{
+ "model_type": "mimo_v2",
+ "architecture": "MiMoV2ForCausalLM",
+ "hidden": 4096,
+ "layers": 48,
+ "moe": {
+  "moe_layers": 47,
+  "dense_layers": 1,
+  "routed_experts": 256,
+  "top_k": 8,
+  "expert_intermediate": 2048,
+  "shared_experts": 0,
+  "shared_intermediate": 0,
+  "scoring": "sigmoid",
+  "topk_method": "noaux_tc",
+  "routed_scaling": null
+ },
+ "derived": {
+  "expert_params": 25165824,
+  "experts_total": 12032,
+  "routed_params_total": 302795194368,
+  "routed_active_params_per_token": 9462349824,
+  "shared_active_params_per_token": 0
+ },
+ "attention": {
+  "per_layer": {
+   "full": 9,
+   "swa": 39
+  },
+  "swa": {
+   "window": 128,
+   "heads/kv": [
+    64,
+    8
+   ],
+   "qk/v dim": [
+    192,
+    128
+   ],
+   "sink_bias": true
+  },
+  "full": {
+   "heads/kv": [
+    64,
+    4
+   ],
+   "qk/v dim": [
+    192,
+    128
+   ]
+  }
+ },
+ "hyper_connections": null,
+ "mtp_layers": 3,
+ "ngram_ple": false,
+ "vision": true,
+ "vocab": 152576,
+ "max_context": 1048576
+}

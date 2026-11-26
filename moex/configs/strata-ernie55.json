@@ -1,0 +1,44 @@
+{
+  "family": "ernie55",
+  "exe": "<STRATA_X_ROOT>/build-dsv41/strata-x",
+  "args": [
+    "-m",
+    "<STRATA_MODELS>/ernie55-gguf/ERNIE-5.5-Flash-IQ3XXS-IQ4XS-00001-of-00003.gguf",
+    "--max-context",
+    "1048576",
+    "--threads",
+    "20",
+    "--expert-profile",
+    "<STRATA_X_DATA>/ernie55-expert-profile-learned.txt",
+    "--resident-headroom-gib",
+    "20",
+    "--layer-split",
+    "22",
+    "--prefill-ring-frac",
+    "0.75"
+  ],
+  "cwd": "<STRATA_X_ROOT>",
+  "tokenizer": "<STRATA_X_DATA>/tokenizers/ernie55",
+  "model_name": "ernie-5.5-flash",
+  "diagnostics": true,
+  "expert_profile_save": "<STRATA_X_DATA>/ernie55-expert-profile-learned.txt",
+  "expert_profile_save_every": 10,
+  "log": "<STRATA_X_ROOT>/strata-ernie55.log",
+  "port": 1234,
+  "gpu": [
+    0,
+    1
+  ],
+  "open_browser": false,
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 0.95
+  },
+  "env": {
+    "STRATA_POOL_SPREAD": "1",
+    "STRATA_POOL_PIPELINE": "1",
+    "STRATA_POOL_TASKS": "252",
+    "STRATA_DSV41_HUGE_PIN": "1",
+    "STRATA_X_TC3": "1"
+  }
+}

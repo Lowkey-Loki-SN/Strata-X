@@ -1,0 +1,42 @@
+{
+  "family": "glm5",
+  "exe": "<STRATA_X_ROOT>/build-dsv41/strata-x",
+  "args": [
+    "-m",
+    "<STRATA_MODELS>/GGUFs/glm53-flash/UD-IQ3_XXS/GLM-5.3-Flash-UD-IQ3_XXS-00001-of-00004.gguf",
+    "--expert-profile",
+    "<STRATA_X_DATA>/glm-expert-profile.txt",
+    "--max-context",
+    "262144",
+    "--mtp",
+    "--coupled-draft",
+    "--spec-min-p",
+    "0.7",
+    "--resident-headroom-gib",
+    "20"
+  ],
+  "cwd": "<STRATA_X_ROOT>",
+  "tokenizer": "<STRATA_X_DATA>/tokenizers/glm5",
+  "model_name": "glm-5.3-flash",
+  "log": "<STRATA_X_ROOT>/strata-glm.log",
+  "port": 1234,
+  "gpu": [
+    0,
+    1
+  ],
+  "layer_split": "27",
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 64
+  },
+  "expert_profile_save": "<STRATA_X_DATA>/glm-expert-profile-learned.txt",
+  "open_browser": false,
+  "vision": {
+    "exe": "<STRATA_X_ROOT>/build-vision/bin/strata-vision",
+    "mmproj": "<STRATA_MODELS>/GGUFs/MMProj/strata-x/GLM-5.3-Flash-mmproj-f16-glm5v.gguf",
+    "model": "<STRATA_MODELS>/GGUFs/glm53-flash/UD-IQ3_XXS/GLM-5.3-Flash-UD-IQ3_XXS-00001-of-00004.gguf",
+    "gpu": false,
+    "threads": 20
+  }
+}

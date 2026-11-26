@@ -1,0 +1,49 @@
+{
+  "family": "hy4",
+  "exe": "<STRATA_X_ROOT>/build-dsv41/strata-x",
+  "args": [
+    "-m",
+    "<STRATA_MODELS>/hy4-flash/q4_k_m/Hy4-flash-Q4_K_M-00001-of-00002.gguf",
+    "--max-context",
+    "1048576",
+    "--threads",
+    "20",
+    "--expert-profile",
+    "<STRATA_X_DATA>/hy4-expert-profile-learned.txt",
+    "--draft-dfly",
+    "<STRATA_MODELS>/hy4-flash/dfly2/hy4-dfly2-q8_0.gguf",
+    "--spec",
+    "6"
+  ],
+  "cwd": "<STRATA_X_ROOT>",
+  "tokenizer": "<STRATA_X_DATA>/tokenizers/hy4",
+  "model_name": "hy4-flash",
+  "diagnostics": false,
+  "expert_profile_save": "<STRATA_X_DATA>/hy4-expert-profile-learned.txt",
+  "expert_profile_save_every": 10,
+  "log": "<STRATA_X_ROOT>/strata-hy4.log",
+  "port": 1234,
+  "gpu": [
+    0,
+    1
+  ],
+  "open_browser": false,
+  "sampling": {
+    "temperature": 0.9,
+    "top_p": 1.0
+  },
+  "vision": {
+    "exe": "<STRATA_X_ROOT>/serve/vision_hy4.py",
+    "python": "<STRATA_AI_DIR>/llama.cpp/.venv/bin/python",
+    "mmproj": "<STRATA_MODELS>/hy4-flash/mmproj/mmproj-Hy4-flash-bf16.gguf",
+    "model": "<STRATA_MODELS>/hy4-flash/mmproj/processor_config.json",
+    "gpu": true,
+    "threads": 20
+  },
+  "env": {
+    "STRATA_POOL_SPREAD": "1",
+    "STRATA_POOL_PIPELINE": "1",
+    "STRATA_POOL_TASKS": "252",
+    "STRATA_HY4_KV_GROW": "1"
+  }
+}

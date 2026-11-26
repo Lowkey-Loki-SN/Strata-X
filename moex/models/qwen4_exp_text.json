@@ -1,0 +1,57 @@
+{
+ "model_type": "qwen4_exp_text",
+ "architecture": "Qwen4ExpForConditionalGeneration",
+ "hidden": 2560,
+ "layers": 48,
+ "moe": {
+  "moe_layers": 48,
+  "dense_layers": 0,
+  "routed_experts": 512,
+  "top_k": 10,
+  "expert_intermediate": 640,
+  "shared_experts": 1,
+  "shared_intermediate": 640,
+  "scoring": "softmax",
+  "topk_method": "greedy",
+  "routed_scaling": null
+ },
+ "derived": {
+  "expert_params": 4915200,
+  "experts_total": 24576,
+  "routed_params_total": 120795955200,
+  "routed_active_params_per_token": 2359296000,
+  "shared_active_params_per_token": 235929600
+ },
+ "attention": {
+  "per_layer": {
+   "linear_attention": 36,
+   "full_attention": 12
+  },
+  "linear": "GatedDeltaNet",
+  "linear_heads_k/v": [
+   16,
+   48
+  ],
+  "full": "QSA (GQA + indexer)",
+  "heads/kv": [
+   24,
+   2
+  ],
+  "head_dim": 256,
+  "indexer": {
+   "heads": 4,
+   "dim": 128,
+   "compress": 4,
+   "budget": 2048
+  }
+ },
+ "hyper_connections": {
+  "streams": 4,
+  "kind": "low-rank (Qwen)"
+ },
+ "mtp_layers": 1,
+ "ngram_ple": true,
+ "vision": true,
+ "vocab": 248320,
+ "max_context": 262144
+}

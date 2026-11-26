@@ -1,0 +1,55 @@
+{
+ "model_type": "glm5_next_text",
+ "architecture": "Glm5NextForConditionalGeneration",
+ "hidden": 4096,
+ "layers": 45,
+ "moe": {
+  "moe_layers": 42,
+  "dense_layers": 3,
+  "routed_experts": 288,
+  "top_k": 8,
+  "expert_intermediate": 2048,
+  "shared_experts": 1,
+  "shared_intermediate": 2048,
+  "scoring": "sigmoid",
+  "topk_method": "noaux_tc",
+  "routed_scaling": 2.5
+ },
+ "derived": {
+  "expert_params": 25165824,
+  "experts_total": 12096,
+  "routed_params_total": 304405807104,
+  "routed_active_params_per_token": 8455716864,
+  "shared_active_params_per_token": 1056964608
+ },
+ "attention": {
+  "per_layer": {
+   "linear_attention": 34,
+   "deepseek_sparse_attention": 11
+  },
+  "linear": "KDA (Kimi delta attention)",
+  "linear_heads": 64,
+  "linear_head_dim": 128,
+  "full": "DSA (MLA + indexer)",
+  "heads": 64,
+  "q_lora": 1536,
+  "kv_lora": 512,
+  "qk_head_dim": 256,
+  "v_head_dim": 256,
+  "indexer": {
+   "heads": 32,
+   "dim": 128,
+   "kpool": 4,
+   "topk": 2048
+  }
+ },
+ "hyper_connections": {
+  "streams": 4,
+  "kind": "Sinkhorn (mHC)"
+ },
+ "mtp_layers": 1,
+ "ngram_ple": false,
+ "vision": true,
+ "vocab": 154880,
+ "max_context": 1048576
+}

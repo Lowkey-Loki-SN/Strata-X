@@ -1,0 +1,94 @@
+{#- ERNIE-5.5-Flash (GGUF arch ernie55): the release's encoding_ernie.py `render_chat`, text for text (serve/test_ernie55.py
+    renders every case both ways and compares).  The release writes its format in Python and ships no Jinja template; this
+    is that renderer for the server's Jinja front end.  Its variables: enable_thinking (false, 0 or "false": the thinking
+    closed at once and no effort line; anything else: open), reasoning_effort (low | medium | high; high when unset),
+    parallel_tool_calls (false, 0 or "false": no line; else the line whenever there are tools), system_settings (text in
+    the system block).  Pictures, videos, audio, agent_storage and examples - which the release also renders - are not
+    taken by this family: a content block other than text renders nothing here. -#}
+{%- set MASK = "<|ERNIE_MASK|>" -%}
+{%- set START = "<|ernie:im_start|>" -%}
+{%- set END = "<|ernie:im_end|>" -%}
+{%- set THINK = "<ernie:think>" -%}
+{%- set THINK_END = "</ernie:think>" -%}
+{%- set thinking_off = enable_thinking is defined and enable_thinking is not none and (enable_thinking == false or enable_thinking == "false") -%}
+{%- set effort = reasoning_effort if reasoning_effort is defined and reasoning_effort is not none else "high" -%}
+{%- if not thinking_off and effort not in ["low", "medium", "high"] -%}
+{{- raise_exception("reasoning_effort must be one of low, medium, high, got " ~ effort) -}}
+{%- endif -%}
+{%- set parallel = not (parallel_tool_calls is defined and parallel_tool_calls is not none and (parallel_tool_calls == false or parallel_tool_calls == "false")) -%}
+{%- macro content_text(content) -%}
+{%- if content is string -%}{{ content }}
+{%- elif content is iterable and content is not mapping -%}
+{%- for item in content -%}{%- if item is mapping and item.get("type") == "text" -%}{{ item.get("text", "") }}{%- endif -%}{%- endfor -%}
+{%- endif -%}
+{%- endmacro -%}
+{%- macro assistant_turn(message) -%}
+{%- set text = content_text(message.get("content")) -%}
+{%- set ns = namespace(reasoning="", content=text) -%}
+{%- if message.get("thoughts") is string -%}
+{%- set ns.reasoning = message.get("thoughts") -%}
+{%- elif message.get("reasoning_content") is string -%}
+{%- set ns.reasoning = message.get("reasoning_content") -%}
+{%- elif THINK_END in text -%}
+{%- set head = text.split(THINK_END)[0] -%}
+{%- set ns.reasoning = head.split(THINK)[-1] if THINK in head else head -%}
+{%- set ns.content = text.split(THINK_END)[-1] -%}
+{%- endif -%}
+{{- START }}assistant
+{{ THINK -}}
+{%- if not thinking_off and ns.reasoning.strip() -%}{{ ns.reasoning }}{%- endif -%}
+{{- THINK_END }}{{ ns.content -}}
+{%- if message.get("tool_calls") -%}
+{{- "<ernie:tool_call>\n" -}}
+{%- for call in message.tool_calls -%}
+{%- set f = call.function if call.function is defined and call.function else call -%}
+{%- set args = f.arguments | from_json if f.arguments is string else f.arguments -%}
+{{- '<invoke name="' }}{{ f.name }}{{ '">' -}}
+{#- case_sensitive: the encoder's sorted(arguments) - Jinja's sort folds case, which put "a_b" before "aB" and "Path" last -#}
+{%- for key in args | sort(case_sensitive=true) -%}
+{{- '<parameter name="' }}{{ key }}{{ '">' }}{{ args[key] if args[key] is string else args[key] | tojson(sort_keys=true) }}{{ "</parameter>" -}}
+{%- endfor -%}
+{{- "</invoke>\n" -}}
+{%- endfor -%}
+{{- "</ernie:tool_call>" -}}
+{%- endif -%}
+{{- END }}
+{% endmacro -%}
+{{- MASK }}{{ START }}system
+{% if messages[0].role == "system" or system_settings is defined and system_settings -%}
+{{- "<ernie:system_setting>" -}}
+{%- if system_settings is defined and system_settings -%}{{ "\n" }}{{ system_settings }}{%- endif -%}
+{%- if messages[0].role == "system" and (messages[0].content is string or (messages[0].content is iterable and messages[0].content is not mapping)) -%}
+{{- "\n" }}{{ content_text(messages[0].content) -}}
+{%- endif -%}
+{{- "\n</ernie:system_setting>\n" -}}
+{%- endif -%}
+{{- "<ernie:global_setting>" -}}
+{%- if not thinking_off -%}{{ "\nreasoning_effort=" }}{{ effort }}{%- endif -%}
+{%- if parallel and tools -%}{{ "\nparallel_tool_calls=True" }}{%- endif -%}
+{{- "\n</ernie:global_setting>" -}}
+{%- if tools -%}
+{{- "\n<ernie:tool_list>\n[" }}{% for t in tools %}{% if not loop.first %}, {% endif %}{{ t | tojson(sort_keys=true) }}{% endfor %}{{ "]\n</ernie:tool_list>" -}}
+{%- endif -%}
+{{- END }}
+{% set turns -%}
+{%- for message in messages -%}
+{%- set role = message.role -%}
+{%- if role == "user" or (role == "system" and not loop.first) -%}
+{{- START }}{{ role }}
+{{ content_text(message.content) }}{{ END }}
+{% elif role == "assistant" -%}
+{{- assistant_turn(message) -}}
+{%- elif role == "tool" -%}
+{%- if loop.first or loop.previtem.role != "tool" -%}{{ START }}tool{%- endif -%}
+{{- "\n<ernie:tool_output>" }}{{ content_text(message.content) }}{{ "</ernie:tool_output>" -}}
+{%- if loop.last or loop.nextitem.role != "tool" -%}{{ END }}
+{% endif -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endset -%}
+{{- turns.strip("\n") -}}
+{%- if add_generation_prompt -%}
+{{- "\n" }}{{ START }}assistant
+{{ THINK }}{% if thinking_off %}{{ THINK_END }}{% endif -%}
+{%- endif -%}
