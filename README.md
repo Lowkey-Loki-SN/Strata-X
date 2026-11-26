@@ -4,11 +4,11 @@
 NVIDIA graphics cards and system RAM · Linux · a fork of <a href="https://github.com/Niko1221/Strata">Strata</a> · MIT License</p>
 
 Strata-X runs mixture-of-experts models larger than its graphics cards' memory on a desktop PC. It is a fork of
-[Strata](https://github.com/Niko1221/Strata), which does this for Qwen3.8-Flash-Next, and it keeps Strata's design: the
-dense part of the model and its most-used experts stay on the graphics cards, the other experts are pinned in RAM and the
-processor computes them at the same time, and a prompt is read by streaming the experts through the cards. Its engine,
-`strata-x`, has run six model families here. The server in front of it is Strata's, with OpenAI- and Anthropic-style APIs
-and a web app.
+[Strata](https://github.com/Niko1221/Strata) and keeps Strata's design: the dense part of the model and its most-used
+experts stay on the graphics cards, the other experts are pinned in RAM and the processor computes them at the same time,
+and a prompt is read by streaming the experts through the cards. Its engine, `strata-x`, has run six model families here,
+and for DeepSeek-V4.1 it also streams experts from an NVMe drive. The server in front of it is Strata's, with OpenAI- and
+Anthropic-style APIs and a web app.
 
 Strata-X is one person's fork, built and measured on one machine: two RTX 3080 20 GB cards (power-limited to 180 W), 125 GiB
 of RAM, a 20-core Xeon Gold 6148 and one NVMe drive. Other machines are untested. There is no installer: you build the
@@ -42,22 +42,31 @@ loaders as QUANTS.md lists them, so a set that passes can still fail on somethin
 
 ## How fast is it here?
 
-Measured on the machine above, each with its run config's settings; other machines were not measured. A token is roughly
-¾ of an English word.
+Measured on the machine above, with each run config's settings unless a note below says otherwise; other machines were
+not measured. A token is roughly ¾ of an English word.
 
 | Model, files | Writes an answer | Reads a prompt | Measured |
 | --- | ---: | ---: | --- |
 | ERNIE-5.5-Flash, the IQ3_XXS / IQ4_XS set | 32.8 tokens/s | 591 tokens/s (20,582 tokens) | 2026-11-25 |
-| Hy4-flash, AngelSlim's Q4_K_M, DFly2 | 34.5-35.7 tokens/s | 627 tokens/s (250,509 tokens) | 2026-11-19 |
-| DeepSeek-V4.1-Flash, Unsloth's UD-Q2_K_XL experts | 21.2 tokens/s | 16K tokens in 46.1 s | 2026-11-10 |
-| DeepSeek-V4.1-Flash, the release's MXFP4 experts | 11.3-13.2 tokens/s | 16K tokens in 74.2 s | 2026-11-09/10 |
-| MiMo-V2.6-Flash, an SX-124G set | 26.2 tokens/s | 8K tokens in 15.8-16.0 s | 2026-10-13 |
-| GLM-5.3-Flash, Unsloth's UD-IQ3_XXS, MTP | 21.4 tokens/s | 8K tokens in 16.7-16.9 s | 2026-10-13 |
+| Hy4-flash, AngelSlim's Q4_K_M, DFly2, 250K tokens deep | 22.9-25.5 tokens/s | 416 tokens/s (217,741 tokens) | 2026-11-19 |
+| DeepSeek-V4.1-Flash, Unsloth's UD-Q2_K_XL experts | 21.2 tokens/s | ~350 tokens/s (~16K tokens) ¹ | 2026-11-10 |
+| DeepSeek-V4.1-Flash, the release's MXFP4 experts | 11.3-13.2 tokens/s ² | ~215 tokens/s (~16K tokens), 154.5 GB of experts from the SSD ² | 2026-11-09/10 |
+| MiMo-V2.6-Flash, an SX-124G set | 26.2 tokens/s | 513-519 tokens/s (8,192 tokens) | 2026-10-13 |
+| GLM-5.3-Flash, Unsloth's UD-IQ3_XXS, MTP | 21.4 tokens/s | 485-490 tokens/s (8,192 tokens) | 2026-10-13 |
 | DeepSeek-V4-Flash, UD-IQ3_S, MTP | 24.6 tokens/s | 549 tokens/s (8K tokens) | 2026-10-10 |
 
-The prompts, their lengths and the runs differ from row to row, and a long conversation writes slower (Hy4-flash
-25.4-32.8 tokens/s at 250K-316K tokens). Each number, with how it was measured, is in the notes:
-[ERNIE55_PLAN.md](moex/docs/ERNIE55_PLAN.md) §8, [HY4_PORT.md](moex/docs/HY4_PORT.md),
+¹ A cold read in a test layout (route bias off, 2,000 expert slots, a 30 GiB SSD cache, no warm start). How much of it
+came from the SSD was not recorded. Over 2.2 hours of use, the drive read at most 13 MB per decoded token with this set,
+prompts included.
+
+² A cold first turn in the notes' comparison of three engines (route bias off): 8,219 expert records of 18.8 MB came from
+the SSD and 4,287 from its RAM cache, and the drive read 220 GB over the whole turn. The decode figures count only the
+requests the drive's slow mode did not hit (those it hit ran at 2.4-4.1 tokens/s). Over two 12-hour days, the drive read
+~150 MB per decoded token with this set, prompts included.
+
+The prompts, their lengths and the runs differ from row to row; the Hy4-flash row is a 250K-token conversation through
+the server at its run config's sampling, the others shorter prompts. Each number, with how it was measured, is in the
+notes: [ERNIE55_PLAN.md](moex/docs/ERNIE55_PLAN.md) §8, [HY4_PORT.md](moex/docs/HY4_PORT.md),
 [DSV41_PLAN.md](moex/docs/DSV41_PLAN.md) §72-§76, [PORT_AUDIT_ALL.md](moex/docs/PORT_AUDIT_ALL.md) §5 and
 [MXFP4.md](moex/docs/MXFP4.md).
 
@@ -170,6 +179,67 @@ Each one's tokenizer comes from its first GGUF file, into the folder below:
 - **From another PC or a container:** start the server with `--host ADDRESS --api-key SECRET`. Never serve beyond
   `127.0.0.1` without a key.
 
+## DeepSeek-V4.1 from an SSD
+
+DeepSeek-V4.1-Flash's routed experts do not fit on this machine: the release's MXFP4 experts alone are 288.8 GB, more than
+its 40 GB of VRAM and 125 GiB of RAM together. The engine reads the experts it holds nowhere else from the NVMe drive while
+it works, and much of the fork's DeepSeek-V4.1 work went into making that usable. The main parts, each measured on the
+machine above, several on earlier expert packs than today's ([DSV41_PLAN.md](moex/docs/DSV41_PLAN.md) has the
+measurements and their conditions):
+
+- **Reads that bypass the page cache.** Experts in neither VRAM nor RAM are read with O_DIRECT straight into pinned memory
+  (12 readers, 4 MiB pieces, demand reads first). A first version read them through mmap, which churned 2-3 GB of page
+  cache a token until systemd-oomd stopped the session.
+- **A RAM cache of the experts read** (`--ssd-cache-gib`, 90 in the templates), in place of a fixed RAM copy. With 60 GiB on
+  an early pack, fresh coding text went from 1.20 to 3.78 tokens/s, and from 93.3 to 26.5 drive reads a token.
+  `STRATA_DSV41_CACHE_WARM=1` fills it with the expert profile's hottest experts at the start: a first turn decoded at
+  3.37-3.40 tokens/s instead of 1.12.
+- **Route bias** (`STRATA_DSV41_ROUTE_BIAS=0.3` in the templates; **it changes the output**): during decode, an expert that
+  would need a drive read has its routing score lowered a little. On an earlier pack, decode went from 6.97 / 10.44 / 12.04
+  to 11.07 / 17.55 / 21.00 tokens/s over three passes of the same text, for a mean KL divergence 0.0054 higher on wikitext
+  and 0.0083 higher on code and agent text.
+- **The drive's slow mode.** Under this load the drive rewrote its most-read blocks (read disturb), dropping to ~490
+  requests a second for ~64 s at a time and starving other programs' reads. The drive guard (`STRATA_DSV41_DRIVE_GUARD=1`)
+  reads the disk's counters every 250 ms and drops the engine to one reader of 128 KB calls until the drive recovers:
+  another program's 4 KB reads in an episode took a median 1.77 ms, against 1,020-2,084 ms a request in episodes without
+  it.
+- **Prompt reads.** A chunk reads only the experts its routing picked (a 32-token prompt 81.7 → 16.6 s). Layer-major windows
+  read each layer's missing experts once per window (`STRATA_DSV41_LAYER_MAJOR=1`: a cold 44K read 166.9 → 125.3 s, 299 →
+  250 GB from the drive). Rules for which reads stay in the cache cut the drive's bytes further
+  (`STRATA_DSV41_PROMPT_KEEP_LONG=1`: -27%).
+- **1M tokens of context** (`STRATA_DSV41_KV_PACK=1`): the compressed attention rows stored packed and read back bit for bit,
+  945 MiB instead of 3,225 MiB at 1M, which leaves room for 175 more experts in VRAM.
+
+The result is the two DeepSeek-V4.1 rows of the speed table. The switches are in the templates
+(`moex/configs/strata-dsv41-*.json`), and the engine prints the DeepSeek switches it was started with.
+
+## Switches for other setups
+
+Most of the engine's switches are experimental. Each below was measured on the machine above, usually on one model, and
+none on other hardware, so on yours another setting may be faster. A run config sets them: flags in its `"args"`,
+environment variables in its `"env"`. DeepSeek-V4.1's SSD switches are in the section above.
+
+| Switch | Default | What it does | Measured here |
+| --- | --- | --- | --- |
+| `--layer-split N` | auto | How many trunk layers, with their expert slots, go on the first card | ERNIE-5.5: a 24K read 54.5 → 49.8 s with 23 instead of auto |
+| `--expert-slots N`, `--vram-reserve-mib M`, `--vram-reserve-later-mib M` | as many as fit, after 700 MiB kept free on the first card and 2,048 on the others | The experts held in VRAM, and the VRAM left to other programs | - |
+| `--expert-profile F` and the config's `"expert_profile_save"` | none | The experts VRAM starts with; the server saves what a run learned and starts from it | GLM-5.3: the first request 17.2 → 20.3 tokens/s with a learned profile |
+| `--resident-headroom-gib G` | 28 | The RAM left free when the RAM copy of the experts is sized | ERNIE-5.5 at 20: an 8K read 296 → 317 tokens/s, 1.59 GiB re-read from the drive instead of 10.08 |
+| `STRATA_DSV41_HUGE_PIN=1` | off | Pinned RAM on 2 MiB pages (DeepSeek-V4.1's cache, and every model's RAM copy) | DeepSeek-V4.1 decode +7-9%; ERNIE-5.5's RAM copy pinned in 10.8 s instead of 28.4 |
+| `STRATA_DSV41_SLOT_SIZES=1` | off | Each VRAM slot the size of its own expert (DeepSeek-V4.1's mixed sets) | 10.9% more experts in the same VRAM |
+| `--threads N` | every physical core but the first | The CPU pool's threads | DeepSeek-V4.1: with 19 instead of 20, the pool's time a token ~5% longer |
+| `STRATA_POOL_SPREAD=1`, `STRATA_POOL_PIPELINE=1`, `STRATA_POOL_TASKS=252` | off, off, 0 | How the pool's threads share out the experts' rows; the results are the same | ERNIE-5.5 decode 23.99 / 25.30 → 25.71 / 26.82 tokens/s; Hy4-flash +6%; not measured on GLM-5.3, MiMo or DeepSeek-V4 |
+| `--max-context N` | 4,096 | The longest conversation the KV cache holds | - |
+| `STRATA_HY4_KV_GROW=1` (ERNIE-5.5's cache grows this way by default) | off | The KV cache mapped as the conversation grows; the VRAM not yet needed holds experts meanwhile | Hy4-flash, greedy runs: a 48K read 27% faster, decode 15-25% faster |
+| `STRATA_DSV41_KV_PACK=1` | off | DeepSeek-V4.1's compressed attention rows stored packed, bit for bit | At 1M: 945 MiB instead of 3,225, 175 more experts in VRAM |
+| `--conversation-cache-mib N` and the config's `"conversation_dir"` | off | Parked conversations, in RAM and on disk, resumed without a re-read (DeepSeek-V4 and V4.1) | A 16K conversation resumed in 7.4 s instead of 51.2 s |
+| `--prefill-ring-frac F` | 0.55 | The share of a layer's experts streamed ahead while a prompt is read | ERNIE-5.5 at 0.75: a 24K read 5.9% faster, a 240,953-token read 532 → 491 s |
+| `STRATA_X_TC3=1` (other roundings) | off | The prompt's BF16 / FP8 matrix products on tensor cores | ERNIE-5.5: a 24K read 47.9 → 44.6 s, the KL divergence unchanged within its noise |
+| `--mtp`, `--draft-mtp F`, `--draft-dfly F`, `--draft-dflash F`, `--draft-dspark F` | off | The model's own drafter: GLM-5.3's, DeepSeek-V4's, Hy4-flash's, MiMo's, DeepSeek-V4.1's | GLM-5.3 34.4-35.0 against 27.0 tokens/s plain; DeepSeek-V4 31.2 against 27.7; Hy4-flash +15% overall (code +43%, prose -3%); MiMo's and DeepSeek-V4.1's were slower here, so off |
+| `--suffix-draft N`, `--lookup-window N` | on (matches of 3 tokens) | Drafts copied from the conversation itself | Where a reply repeats its prompt: MiMo +27% on a code edit; ERNIE-5.5 44.6-46.0 against 27.7 tokens/s on a verbatim repeat |
+
+The notes have what each switch was measured against, and the ones tried and not kept.
+
 ## The repository
 
 | Where | What |
@@ -183,16 +253,16 @@ Each one's tokenizer comes from its first GGUF file, into the folder below:
 | `moex/docs/` | The engineering notes: each model's port, the measurements and the decisions, by date |
 | `moex/tools/` | GGUF converters (ERNIE-5.5's), DeepSeek-V4.1's expert packs, checks and benchmarks |
 | `moex/ref/`, `moex/tools/*/ref/` | The float reference models the engine's arithmetic is checked against |
-| `docs/`, `setup.py`, `START-HERE.bat`, `src/core/`, ... | Upstream Strata's own: its Qwen3.8-Flash-Next engine, installer and docs |
+| `docs/`, `setup.py`, `START-HERE.bat`, `src/core/`, ... | Upstream Strata's own: its engine, installer and docs |
 
 **Tests:** `"$STRATA_PYTHON" -m unittest discover -s serve -p "test_*.py" -t .` runs the server's and the families' tests
 without a GPU; `ctest --test-dir build-dsv41` runs the kernels' parity tests on the GPU. The rest:
 [moex/README.md](moex/README.md#tests).
 
-## Strata and Qwen3.8-Flash-Next
+## Upstream Strata
 
-Strata-X keeps upstream Strata's engine, installer and docs for Qwen3.8-Flash-Next as they were merged at v0.1.43.1
-(2026-10-13), with some later fixes ported by hand. For that model, use [Strata](https://github.com/Niko1221/Strata)
+Strata-X keeps upstream Strata's own engine, installer and docs as they were merged at v0.1.43.1 (2026-10-13), with some
+later fixes ported by hand. For the models upstream Strata supports, use [Strata](https://github.com/Niko1221/Strata)
 itself, with its own installer and its current releases.
 
 ## Reporting a problem

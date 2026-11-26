@@ -2,8 +2,8 @@
 
 Strata-X is a fork of [Strata](https://github.com/Niko1221/Strata) that runs more of the large mixture-of-experts models
 on one PC, with the same design: the dense part and the most-used experts in VRAM, the other experts pinned in RAM and
-computed by a CPU pool, and the prompt read by streaming the experts through VRAM. Upstream's own path (Qwen3.8-Flash-Next:
-`setup.py`, `docs/`) is kept as it is; the checkout's `README.md` is the fork's, and this folder documents what it adds.
+computed by a CPU pool, and the prompt read by streaming the experts through VRAM. Upstream's own engine, installer and docs
+(`setup.py`, `docs/`) are kept as they are; the checkout's `README.md` is the fork's, and this folder documents what it adds.
 
 ## What the fork adds
 
@@ -99,8 +99,8 @@ time, so a line number can be out of date.
 | Note | About |
 |---|---|
 | [`MOEX.md`](docs/MOEX.md) | The fork's design: Strata's mechanism for GLM-5.3, DeepSeek-V4 and MiMo-V2.6, and the port plan |
-| [`PORT_AUDIT_GLM.md`](docs/PORT_AUDIT_GLM.md), [`PORT_AUDIT_ALL.md`](docs/PORT_AUDIT_ALL.md) | `strata-x` audited against Strata's Qwen design |
-| [`STRATA_QWEN_DESIGN.md`](docs/STRATA_QWEN_DESIGN.md) | Upstream Strata's design inventory, the checklist the ports follow |
+| [`PORT_AUDIT_GLM.md`](docs/PORT_AUDIT_GLM.md), [`PORT_AUDIT_ALL.md`](docs/PORT_AUDIT_ALL.md) | `strata-x` audited against upstream Strata's design |
+| [`STRATA_QWEN_DESIGN.md`](docs/STRATA_QWEN_DESIGN.md) | Upstream Strata's design inventory (taken from its engine for Qwen3.8-Flash-Next), the checklist the ports follow |
 | [`DSV4_SPEC.md`](docs/DSV4_SPEC.md) | DeepSeek-V4-Flash's forward pass, operator by operator |
 | [`MXFP4.md`](docs/MXFP4.md) | The MXFP4 releases of DeepSeek-V4 and MiMo-V2.6 at full speed |
 | [`DSV41_PORT.md`](docs/DSV41_PORT.md) | DeepSeek-V4.1-Flash in `strata-x`: the port design |
