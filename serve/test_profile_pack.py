@@ -73,6 +73,15 @@ class ProfilePack(unittest.TestCase):
         self.assertEqual(args[args.index("--expert-profile-save") + 1], str(self.learned))   # the run still saves one
         self.assertIn("--pack", args)
 
+    def test_said_once_a_start(self):   # the start builds the arguments twice (the RAM check, then the engine)
+        import contextlib, io
+        self.base.unlink()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            for _ in range(2):
+                missing_profile_dropped({"cwd": str(self.d)}, ["--expert-profile", str(self.base)])
+        self.assertEqual(out.getvalue().count("is not there yet"), 1)
+
     def test_a_profile_that_is_there_is_kept(self):
         args = self.args()
         self.assertEqual(missing_profile_dropped({"cwd": str(self.d)}, args), args)

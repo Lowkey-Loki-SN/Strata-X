@@ -3094,12 +3094,21 @@ def learned_profile_args(cfg: dict, args: list[str]) -> list[str]:
         lp, cp = profile_pack(learned_path), pack_digest(args, here)
         same_pack = lp is None or cp is None or lp in (cp, pack_digest(args, here, _PACK_BASIS_BEFORE))
         if learned is not None and (base is None or learned == base) and same_pack:
-            print(f"[strata] expert profile: the learned one ({save}) in place of the config's ({args[i]})", flush=True)
+            _say_once(f"[strata] expert profile: the learned one ({save}) in place of the config's ({args[i]})")
             args[i] = save
         elif learned is not None and not same_pack:
-            print(f"[strata] expert profile: the learned one ({save}) is another pack's - starting from the config's ({args[i]})",
-                  flush=True)
+            _say_once(f"[strata] expert profile: the learned one ({save}) is another pack's - starting from the config's ({args[i]})")
     return args
+
+
+_SAID: set[str] = set()
+
+
+def _say_once(line: str) -> None:
+    """moex: a start builds the engine's arguments twice (warn_budget_over_ram, then the engine itself): what that says, once."""
+    if line not in _SAID:
+        _SAID.add(line)
+        print(line, flush=True)
 
 
 def missing_profile_dropped(cfg: dict, args: list[str]) -> list[str]:
@@ -3114,7 +3123,7 @@ def missing_profile_dropped(cfg: dict, args: list[str]) -> list[str]:
         return args
     save = cfg.get("expert_profile_save")
     then = f" (this run's routing is saved to {save} and the next start begins from it)" if isinstance(save, str) and save.strip() else ""
-    print(f"[strata] expert profile: {args[i]} is not there yet - the engine starts without one{then}", flush=True)
+    _say_once(f"[strata] expert profile: {args[i]} is not there yet - the engine starts without one{then}")
     return args[:i - 1] + args[i + 1:]
 
 
