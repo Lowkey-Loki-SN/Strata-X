@@ -3,12 +3,12 @@
 <p align="center"><b>GLM-5.3, DeepSeek-V4 / V4.1, MiMo-V2.6, Hy4 and ERNIE-5.5 on one PC</b><br>
 NVIDIA graphics cards and system RAM · Linux · a fork of <a href="https://github.com/Niko1221/Strata">Strata</a> · MIT License</p>
 
-Strata-X runs large mixture-of-experts models, too big for any graphics card, on a desktop PC. It is a fork of
+Strata-X runs mixture-of-experts models larger than its graphics cards' memory on a desktop PC. It is a fork of
 [Strata](https://github.com/Niko1221/Strata), which does this for Qwen3.8-Flash-Next, and it keeps Strata's design: the
 dense part of the model and its most-used experts stay on the graphics cards, the other experts are pinned in RAM and the
 processor computes them at the same time, and a prompt is read by streaming the experts through the cards. Its engine,
-`strata-x`, runs six model families. The server in front of it is Strata's: OpenAI- and Anthropic-compatible, with a web
-app.
+`strata-x`, has run six model families here. The server in front of it is Strata's, with OpenAI- and Anthropic-style APIs
+and a web app.
 
 Strata-X is one person's fork, built and measured on one machine: two RTX 3080 20 GB cards (power-limited to 180 W), 125 GiB
 of RAM, a 20-core Xeon Gold 6148 and one NVMe drive. Other machines are untested. There is no installer: you build the
@@ -16,17 +16,18 @@ engine, get a model's files and make its run config, as below.
 
 ## Models
 
-| Model | Files it runs from | Context | Images | Drafter in the run config |
+| Model | Files run here | Context in its run config | Pictures | Drafter in its run config |
 | --- | --- | --- | --- | --- |
-| GLM-5.3-Flash | llama.cpp's conversion (`glm5-next` / `glm5next`) | 256K | yes | its MTP block |
-| DeepSeek-V4-Flash | mainline llama.cpp's `deepseek4` conversion | 256K | yes | its MTP file |
-| DeepSeek-V4.1-Flash | a GGUF set (mainline's or Unsloth's), or this repo's dense GGUF and expert pack | 1M | yes | none |
-| MiMo-V2.6-Flash | llama.cpp's `mimo2` conversion | 256K | yes | none |
-| Hy4-flash | [AngelSlim's GGUF sets](https://huggingface.co/AngelSlim/Hy4-flash-GGUF) | 1M | yes | DFly2 |
-| ERNIE-5.5-Flash | this repo's converter, or [the set run here](https://huggingface.co/Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF) | 1M | no | none |
+| GLM-5.3-Flash | a Q2_K set, Unsloth's UD-IQ3_XXS | 256K | yes | its MTP block |
+| DeepSeek-V4-Flash | a UD-IQ3_S set, tarruda's Q3_K once re-quantized | 256K | yes | its MTP file |
+| DeepSeek-V4.1-Flash | the release's MXFP4 experts; Unsloth's UD-Q2_K_XL, UD-IQ3_XXS and UD-IQ1_M experts | 1M | yes | none |
+| MiMo-V2.6-Flash | AesSedai's BPW3.0, an SX-124G set | 256K | yes | none |
+| Hy4-flash | [AngelSlim's](https://huggingface.co/AngelSlim/Hy4-flash-GGUF) Q4_K_M | 1M | yes | DFly2 |
+| ERNIE-5.5-Flash | the set this repo's converter made ([on Hugging Face](https://huggingface.co/Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF)) | 1M | no | none |
 
-"Context" is what the run configs here set. A drafter guesses a few tokens that the model then checks at once: the same
-text, sooner, where the guesses are good.
+The context a run config sets is not the length each model was tested to: the notes say how far each was run. A drafter
+guesses a few tokens that the model then checks together; it pays where the guesses are often right. Other files can load
+too, and some do not: `moex/docs/QUANTS.md` has the layouts and types the engine reads for each model.
 
 **Before you download a model**, read [`moex/docs/QUANTS.md`](moex/docs/QUANTS.md): which files and quantization types
 each model runs, which load only with a setting, and what is not supported yet. A Hugging Face set can be checked from
@@ -36,12 +37,13 @@ its headers alone, before you download it:
 python3 serve/quant_check.py --hf ORG/REPO FOLDER
 ```
 
-The server runs the same check on a run config's model files before it starts the engine, and names any weight the engine
-has no kernel for.
+The server runs the same check on a run config's model files before it starts the engine. Its rules mirror the engine's
+loaders as QUANTS.md lists them, so a set that passes can still fail on something the check does not cover.
 
 ## How fast is it here?
 
-Measured on the machine above, each in its run config's settings. A token is about ¾ of a word.
+Measured on the machine above, each with its run config's settings; other machines were not measured. A token is roughly
+¾ of an English word.
 
 | Model, files | Writes an answer | Reads a prompt | Measured |
 | --- | ---: | ---: | --- |
@@ -63,15 +65,16 @@ The prompts, their lengths and the runs differ from row to row, and a long conve
 
 | | |
 | --- | --- |
-| **Graphics card** | **NVIDIA**, with CUDA. Built and run here on RTX 30 cards (compute capability 8.6); other generations are untested. One card or two: the run configs here split the layers over two. |
-| **RAM** | The experts that do not fit on the cards are pinned in RAM. ERNIE-5.5's set, 126 GiB of files, runs here on the two 20 GB cards and 125 GiB of RAM. DeepSeek-V4.1 can also read experts from an NVMe drive while it answers (its SSD tier). |
+| **Graphics card** | **NVIDIA**, with CUDA. Built and run here on RTX 30 cards (compute capability 8.6); other generations are untested. The run configs here split the layers over two cards; one-card runs were used only for some of the engine's checks. |
+| **RAM** | The experts that do not fit on the cards are pinned in RAM. ERNIE-5.5's set, 126 GiB of files, runs here on the two 20 GB cards and 125 GiB of RAM. DeepSeek-V4.1 can also read experts from an NVMe drive while it answers (its SSD tier). Less RAM is untested. |
 | **System** | Linux. The engine and the fork's scripts were written and run on Linux only. |
-| **To build** | The CUDA toolkit, CMake, Ninja, GCC and git (here CUDA 13.3, CMake 3.28 and GCC 13.3), and Python 3.10 or newer for the server. |
+| **To build** | The CUDA toolkit, CMake, Ninja, GCC and git (here CUDA 13.3, CMake 3.28 and GCC 13.3), and Python for the server (3.12 here; upstream Strata's server needs 3.10 or newer). |
 
 ## How to run
 
-These steps run ERNIE-5.5-Flash, whose files are all on Hugging Face. The other models take the same steps with their own
-files ([the table below](#the-other-models)).
+These steps run ERNIE-5.5-Flash, whose files are all on Hugging Face. They were followed from a fresh clone on the machine
+above (2026-11-26), with the model's files from a local copy rather than a new download. The other models take the same
+steps with their own files ([the table below](#the-other-models)).
 
 **1. Build the engine.** CMake fetches the pinned llama.cpp it builds on, and applies `moex/patches/llama.cpp/` itself.
 Set `CMAKE_CUDA_ARCHITECTURES` to your card's: 86 is the RTX 30 series.
@@ -119,8 +122,8 @@ sed -e "s#<STRATA_X_ROOT>#$STRATA_X_ROOT#g" -e "s#<STRATA_X_DATA>#$STRATA_X_DATA
     moex/configs/strata-ernie55.json > strata-ernie55.json
 ```
 
-Its settings (the layers split over two cards, expert slots, RAM headroom, threads) were tuned on the machine above. On
-other hardware, start from them.
+Its settings (the layers split over two cards, expert slots, RAM headroom, threads) were tuned on the machine above and
+are untested elsewhere; other hardware may need other values.
 
 **6. Start the server:**
 
@@ -136,7 +139,8 @@ expert profile yet: the run learns which experts are used most, saves that, and 
 ### The other models
 
 Each has a template in `moex/configs/` that names its files and settings; if your files are somewhere else, change `-m`
-and the other paths in the run config. Its tokenizer comes from its first GGUF file, into the folder below:
+and the other paths in the run config. These models were run here from the maintainer's checkout, not from a fresh clone.
+Each one's tokenizer comes from its first GGUF file, into the folder below:
 
 ```bash
 "$STRATA_PYTHON" tools/strata_tokenizer_families.py --gguf FIRST_FILE.gguf --out "$STRATA_X_DATA/tokenizers/FOLDER"
@@ -153,20 +157,18 @@ and the other paths in the run config. Its tokenizer comes from its first GGUF f
 
 ## Using it
 
-- **Your apps and coding agents:** an OpenAI-compatible provider with the base URL **`http://127.0.0.1:1234/v1`**. The
-  model's name is its run config's `model_name` (`ernie-5.5-flash`, `deepseek-v4.1-flash`, ...).
-  - Apps that use Anthropic's API: `http://127.0.0.1:1234/v1/messages` (Claude Code:
-    `ANTHROPIC_BASE_URL=http://127.0.0.1:1234`).
-  - Apps that use the OpenAI Responses API: `/v1/responses`.
-- **In the browser:** `http://127.0.0.1:1234` opens Strata's app: chat, and a live monitor of the model and the machine.
-- **Thinking:** a client's `enable_thinking` and reasoning effort are mapped to the levels each model's chat template
-  knows (`serve/families.py`).
+- **Clients of the OpenAI API:** the base URL **`http://127.0.0.1:1234/v1`**, and as the model's name its run config's
+  `model_name` (`ernie-5.5-flash`, `deepseek-v4.1-flash`, ...).
+  - Anthropic's API: `http://127.0.0.1:1234/v1/messages`. The OpenAI Responses API: `/v1/responses`.
+  - The fresh-clone test sent one request to each of the three, with ERNIE-5.5. Other clients and features are as upstream
+    Strata's server documents them ([`docs/DETAILS.md`](docs/DETAILS.md#using-it)), untested here.
+- **In the browser:** the server also serves Strata's web app, at `http://127.0.0.1:1234`.
+- **Thinking:** `reasoning_effort` (`none`, `low`, `medium`, `high`), or `chat_template_kwargs` with `"enable_thinking":
+  false`; each model's template takes the levels it has (`serve/families.py`).
 - **Pictures:** attach them in the app or send them through the API, once the model's image encoder is set up
   ([`moex/docs/VISION.md`](moex/docs/VISION.md)).
 - **From another PC or a container:** start the server with `--host ADDRESS --api-key SECRET`. Never serve beyond
   `127.0.0.1` without a key.
-
-The server's API and settings are upstream Strata's: [`docs/DETAILS.md`](docs/DETAILS.md#using-it).
 
 ## The repository
 
@@ -178,7 +180,7 @@ The server's API and settings are upstream Strata's: [`docs/DETAILS.md`](docs/DE
 | `serve/` | The server (upstream's), each model family's chat template, reply parser and request dialect (`families.py`, `family_templates/`, `family_parsers.py`), and the quantization check (`quant_check.py`) |
 | [`moex/configs/`](moex/configs/README.md) | The run-config templates |
 | `launch-*.sh` | The launchers of the run configs this machine uses |
-| `moex/docs/` | The engineering notes: each model's port, every measurement and the decisions, by date |
+| `moex/docs/` | The engineering notes: each model's port, the measurements and the decisions, by date |
 | `moex/tools/` | GGUF converters (ERNIE-5.5's), DeepSeek-V4.1's expert packs, checks and benchmarks |
 | `moex/ref/`, `moex/tools/*/ref/` | The float reference models the engine's arithmetic is checked against |
 | `docs/`, `setup.py`, `START-HERE.bat`, `src/core/`, ... | Upstream Strata's own: its Qwen3.8-Flash-Next engine, installer and docs |
@@ -191,7 +193,7 @@ without a GPU; `ctest --test-dir build-dsv41` runs the kernels' parity tests on 
 
 Strata-X keeps upstream Strata's engine, installer and docs for Qwen3.8-Flash-Next as they were merged at v0.1.43.1
 (2026-10-13), with some later fixes ported by hand. For that model, use [Strata](https://github.com/Niko1221/Strata)
-itself: its installer sets everything up, and its releases are current.
+itself, with its own installer and its current releases.
 
 ## Reporting a problem
 
@@ -205,6 +207,7 @@ Strata-X is built on [Strata](https://github.com/Niko1221/Strata) by Niko1221 an
 [llama.cpp / ggml](https://github.com/ggml-org/llama.cpp). The models are their makers': Z.ai's GLM-5.3-Flash,
 DeepSeek's V4-Flash and V4.1-Flash, Xiaomi's MiMo-V2.6-Flash, Tencent's Hy4-flash and Baidu's ERNIE-5.5-Flash, each under
 its own license. The GGUF sets `moex/docs/QUANTS.md` names are their makers' (Unsloth, AngelSlim, AesSedai, ggml-org and
-tarruda). Each model's arithmetic is checked against llama.cpp's or its release's reference code (the notes say how).
+tarruda). Each model's arithmetic was checked against llama.cpp or a float reference of its release; the notes say how,
+and how far.
 
 Strata-X is open source under the [MIT License](LICENSE), as Strata is.
