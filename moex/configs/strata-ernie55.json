@@ -34,6 +34,7 @@
   "reasoning_loop_coverage": 1.0,
   "answer_loop_recovery": "stop",
   "call_loop_recovery": "stop",
+  "reasoning_budget_tokens": 32768,
   "sampling": {
     "temperature": 1.0,
     "top_p": 0.95

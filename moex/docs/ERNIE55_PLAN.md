@@ -592,7 +592,45 @@ and about the set's recipe. Every number below came from a run that night; the t
   family's wrap-up and lets the model answer, where `"stop"` ended the reply with none. On the real engine (the live
   binary, a test server): the same wrap-up path, reached through a thinking budget of 150 tokens, closed the thinking
   mid-sentence and the model answered in full (finish "stop", 587 tokens). A loop could not be provoked on demand: asked to
-  write one line 400 times in its thinking, the model declined ("filler text doesn't accomplish anything") and answered. A thinking budget
+  write one line 400 times in its thinking, the model declined ("filler text doesn't accomplish anything") and answered.
+- **"wrap" on the real loop** (2026-11-27 morning; the session decoded again for this and deleted after): the stalled
+  request's own 7,931 prompt tokens and its reasoning up to reply token 36,000 (where the cycle was taking over), through the
+  server's request code (Service.run, the request's 21 tools) on the real engine with the IQ3_S / IQ4_XS set and the run
+  config's sampling. The model went on cycling; the guard read a fully repeated window at 2,560 generated tokens and wrapped
+  the thinking up, and the model answered with one line and a tool call (`bash`) - its task's first step, as an agent
+  goes on - where the original reply ran 41,661 tokens until it was cancelled. Again through the public checkout's code
+  with its run config's own "wrap": fired at 3,072, the same answer shape. Two more checks: without the guard one resumed
+  run left the cycle by itself after 683 tokens; closing the thinking at reply token 24,000 (as a 24K thinking budget would)
+  gave the same one-line answer and `bash` call, so a budget is not needed for this request to go on.
+- **The engine and the reference against the official code** (2026-11-27 morning, at the user's doubt that the engine was
+  cleared only against our own reference): two audits read `ref/model.py` line by line, one against vLLM-ERNIE (ba322a5 on
+  vLLM 5df63a7, the vLLM files the reference was written without - the sparse-attention backends, the compressor's helpers,
+  the indexer's top-k - fetched at that commit), one against SGLang's port (f4284f2). No semantic difference on any
+  long-context path: the compressor (a block completes at (p+1) % 128 == 0, the ape row p % 128, a softmax per channel over
+  the block, the norm, the compressed row rotated at the block's first position 128k), the rows a query at p sees ((p+1) //
+  128 compressed rows with no cap, the window p-127..p, one softmax with the sink, scale 512^-0.5), YaRN (theta 160000,
+  original 65536, factor 16, beta 32 / 1, no attention factor: frequency and angle tables bit-equal to both up to position
+  1,048,575), the DSA layers (the indexer's NeoX RoPE on 64 of 128 dims, Hadamard, the FP8 rounding, candidates 0..p-128,
+  an exact top-2048, then the window). The differences are rounding: vLLM's README runs FP8 KV caches and rounds parts of
+  the indexer to bf16 (the reference and the engine keep more); SGLang's fused indexer path scales its FP8 rounding by
+  amax / 448 where vLLM-ERNIE and the reference use a power of two (only the candidates at the 2,048 cut, in the six DSA
+  layers). Not read: the FlashMLA, FlashInfer and DeepGEMM CUDA kernels themselves (their sources are not in either repo).
+- **Long context helps the engine** (the live binary and run config): the same final 2,047 tokens of
+  moex/docs/DSV41_PLAN.md (one engineering log; its tokens 58,849-108,000) read with 4K, 16K and 48K of context before them -
+  mean NLL 2.649 / 2.486 / 2.309 (perplexity 14.1 / 12.0 / 10.1): no plateau or rise to 48K. With the passphrases found at
+  50% and 95% of a 240,943-token document (above), the engine and the reference are not where the stall comes from; what
+  this box cannot test is Baidu's own model and serving.
+- **Keeping a reply out of the stall: the thinking budget** (2026-11-27 morning). The stall formed only after a very long
+  planning - coherent to ~29K reply tokens, the first cycle lines from ~31K, nothing else from 36.4K - and closing that
+  thinking at 24K (the family's wrap-up, as a budget closes it) let the model go on with its task (one line and a `bash`
+  call, above). The run config now also says `"reasoning_budget_tokens": 32768`: the server closes any thinking at 32,768
+  tokens the same way and the model answers (a request can set its own, 0 none). Sized from this box's own use - the dev
+  server's log, 774 ERNIE-5.5 requests: generated tokens a reply median 376, 90th percentile 1,642, 99th 4,896, the longest
+  normal one 12,782 (finish "stop"); only the stalled one past 16,384 (41,661, cancelled) - so it touches none of the 773
+  others, at 2.5 times the longest. With "wrap" the two bound a reply: a cycle ends at the guard's look (2,560 and 3,072
+  generated tokens on the real loop), and no thinking runs past 32,768 tokens, where this planning had not yet
+  degenerated. What they cannot do is make the weights plan differently: a reply that needs more than 32,768 tokens of
+  thinking is answered from what it thought by then. A thinking budget
   (`reasoning_budget_tokens`) would end such a planning earlier, but it also cuts a long thinking that is not looping: not set.
 
 ### The recipe
@@ -638,3 +676,10 @@ and about the set's recipe. Every number below came from a run that night; the t
   token against 10.3-11.0. The server's end-to-end checks (moex/tools/ernie55/server_checks.py, the public checkout's
   server): 8 of 8 PASS. Since 2026-11-27 both local run configs name it (`strata-ernie55.json.bak-iq3xxs-20261127` beside
   each is the one before); the template still names the IQ3_XXS set (the files the README's step 3 downloads).
+- **Which layers the output feels** (`ref/layer_sensitivity.py`: the reference model on two held-out chunks of 2,048 tokens -
+  this repository's docs and wiki text, 2,046 positions scored - in 16 variants run at once: exact, one group of three MoE
+  layers at a time with the IQ3_S / IQ4_XS set's experts, all layers; 6,193 s): mean KL from the exact model, by group -
+  1-3 0.00325, 4-6 0.00415, 7-9 0.00358, 10-12 0.00520, 13-15 0.00617, 16-18 0.00359, 19-21 0.00216, 22-24 0.00201,
+  25-27 0.00111, 28-30 0.00241, 31-33 0.00197, 34-36 0.00233, 37-39 0.00123, 40-42 0.00148; all layers at once 0.02311 (the
+  groups' sum 0.04064: the costs do not add, the whole is 57% of the parts). The first 18 layers cost 2.4 times what the
+  last 24 do, a layer for a layer (13-15 against 25-27: 5.6 times) - an uneven model, unlike the weights' own errors.
