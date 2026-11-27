@@ -140,6 +140,52 @@ class ReasoningLoopRecovery(unittest.TestCase):
         self.assertLess(events[-1][1]['completion_tokens'], 5000)
         self.assertEqual(events[-1][1]['reasoning_recoveries'], 0)
 
+    def test_wrap_mode_closes_the_thinking_and_answers(self):
+        """moex: "wrap" closes a looping thinking with the budget's wrap-up and lets the model answer: one more pass,
+        from the same prompt and every generated id plus the wrap-up (the engine continues from its cached prefix)."""
+        from serve.server import REASONING_WRAP_UP
+        engine = RecordingEngine(self.tok, [self.loop, 'The answer is 42.'])
+        service = Service(engine, self.tok, None)
+        service.reasoning_loop_recovery = "wrap"
+        with contextlib.redirect_stdout(io.StringIO()) as log:
+            events = list(service.run(self.ids, True, [], 40000, {}, threading.Event()))
+        self.assertEqual(len(engine.calls), 2)
+        self.assertEqual(events[-1][1]['finish'], 'stop')
+        self.assertEqual(events[-1][1]['reasoning_recoveries'], 1)
+        content = ''.join(e.text or '' for kind, e in events if kind == 'event' and e.kind == 'content')
+        self.assertEqual(content, 'The answer is 42.')
+        second = engine.calls[1][0]
+        self.assertEqual(second[:len(self.ids)], self.ids)                    # the prompt as it was, untouched
+        wrap_ids = self.tok.encode(REASONING_WRAP_UP, parse_special=True)
+        self.assertEqual(second[-len(wrap_ids):], wrap_ids)                   # ... then the wrap-up, last
+        generated = second[len(self.ids):-len(wrap_ids)]
+        self.assertEqual(generated, self.tok.encode(self.loop)[:len(generated)])   # the thinking's own ids before it
+        self.assertLess(len(generated), 20000)                                # ended at the loop, not the limit
+        self.assertEqual(engine.calls[1][1], 40000 - len(generated) - len(wrap_ids))   # the same output limit in all
+        self.assertIn('wrapping up the thinking so the model answers', log.getvalue())
+
+    def test_wrap_mode_is_once(self):
+        """After the wrap-up the reply is the answer: the thinking's guard does not look again (a looping answer is the
+        answer guard's), and the output limit is the request's."""
+        engine = RecordingEngine(self.tok, [self.loop, self.loop])
+        service = Service(engine, self.tok, None)
+        service.reasoning_loop_recovery = "wrap"
+        with contextlib.redirect_stdout(io.StringIO()):
+            events = list(service.run(self.ids, True, [], 16384, {}, threading.Event()))
+        self.assertEqual(len(engine.calls), 2)
+        self.assertEqual(events[-1][1]['finish'], 'length')
+        self.assertEqual(events[-1][1]['completion_tokens'], 16384)
+        self.assertEqual(events[-1][1]['reasoning_recoveries'], 1)
+
+    def test_wrap_mode_leaves_a_reply_without_a_loop_alone(self):
+        engine = RecordingEngine(self.tok, ['Short thought.\n</think>\n\nAnswer.'])
+        service = Service(engine, self.tok, None)
+        service.reasoning_loop_recovery = "wrap"
+        events = list(service.run(self.ids, True, [], 40000, {}, threading.Event()))
+        self.assertEqual(len(engine.calls), 1)
+        self.assertEqual(events[-1][1]['finish'], 'stop')
+        self.assertEqual(events[-1][1]['reasoning_recoveries'], 0)
+
     def test_disabled_is_one_pass(self):
         engine, events = self.run_case(False)
         self.assertEqual(len(engine.calls), 1)
@@ -509,6 +555,21 @@ class ReasoningLoopCoverage(unittest.TestCase):
         done, content, log = self.run_reasoning(number_drafts(0), coverage=1.0, max_new=1000)   # max tokens itself
         self.assertEqual(done['finish'], 'length')
         self.assertIn(hint, log)
+
+
+class ReasoningLoopRecoveryConfig(unittest.TestCase):
+    """The config key: false (the default), "stop", "recover" (true) or "wrap"; anything else stops the start."""
+
+    def test_values(self):
+        run_main = AnswerLoopRecoveryConfig.run_main
+        self.assertIs(run_main(self, {}).reasoning_loop_recovery, False)
+        self.assertEqual(run_main(self, {'reasoning_loop_recovery': True}).reasoning_loop_recovery, 'recover')
+        for v in ('stop', 'recover', 'wrap'):
+            self.assertEqual(run_main(self, {'reasoning_loop_recovery': v}).reasoning_loop_recovery, v)
+        for bad in ('yes', 'wrap-up', 1, None):
+            with self.subTest(value=bad), self.assertRaises(SystemExit) as cm:
+                run_main(self, {'reasoning_loop_recovery': bad})
+            self.assertIn('reasoning_loop_recovery', str(cm.exception))
 
 
 class ReasoningLoopCoverageConfig(unittest.TestCase):

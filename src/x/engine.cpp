@@ -1600,7 +1600,7 @@ bool Engine::imatrix_begin(std::string& err) {
     if (!(m.opt.prefill_chunk != -1 && m.gub_max > 0 && m.mmq_all && mmq::built()))
         return m.fail(err, "the imatrix collection reads through the prompt path, which is off for this model or build");
     auto x = std::make_unique<Impl::Imx>();
-    const int64_t E = m.hp.n_expert, n = m.hp.n_embd, nf = m.hp.n_ff_exp;
+    const int64_t E = m.hp.n_expert, n = m.hp.ex(), nf = m.hp.n_ff_exp;   // (moex: the experts' input width, the latent's)
     x->gu.assign((size_t) m.hp.n_layer, nullptr);
     x->dn.assign((size_t) m.hp.n_layer, nullptr);
     x->cnt.assign((size_t) (m.hp.n_layer * E), 0);
@@ -1623,11 +1623,12 @@ bool Engine::imatrix_begin(std::string& err) {
 }
 
 /// DSV41IMX v1 (moex/tools/dsv41/requant_pack.cpp): u32 n_layers, n_expert, n_embd, n_ff, then per layer and expert the gate/up
-/// sums [n_embd], the down sums [n_ff] (F32) and the tokens routed (u32); a dense layer's entries are zeros.
+/// sums [n_embd], the down sums [n_ff] (F32) and the tokens routed (u32); a dense layer's entries are zeros.  moex: n_embd is
+/// the experts' input width (HParams::ex(): a latent MoE's latent).
 bool Engine::imatrix_write(const std::string& path, std::string& err) const {
     Impl& m = *p_;
     if (!m.imx) return m.fail(err, "no imatrix collection running (imatrix_begin)");
-    const int64_t E = m.hp.n_expert, n = m.hp.n_embd, nf = m.hp.n_ff_exp, NL = m.hp.n_layer;
+    const int64_t E = m.hp.n_expert, n = m.hp.ex(), nf = m.hp.n_ff_exp, NL = m.hp.n_layer;
     FILE* f = fopen(path.c_str(), "wb");
     if (!f) return m.fail(err, "cannot write " + path);
     const uint32_t hdr[5] = {1, (uint32_t) NL, (uint32_t) E, (uint32_t) n, (uint32_t) nf};

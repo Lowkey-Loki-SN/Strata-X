@@ -1023,7 +1023,9 @@ bool Stage::moe_prompt(int il, int T, Stream& str, std::string& err) {
     mmq::quantize(lat ? hxl : cur, d_src, mb.xq, f.gu_type, nx, nx, R, s);   // the activations once, in expert order
     if (m.imx) {   // the imatrix collection: each routed expert's squared inputs (its tokens' FFN rows)
         cudaMemcpyAsync(imx_order, order.data(), (size_t) nu * sizeof(int32_t), cudaMemcpyHostToDevice, s);   // pageable: staged
-        dsv41_imx_sumsq(cur, n, d_src, d_abs, imx_order, nu, n, m.imx->gu[(size_t) il], s);
+        // moex (2026-11-27): a latent MoE's experts (Hy4-flash, ERNIE-5.5) read the latent rows, nx wide - the hidden rows
+        // were summed here before; elsewhere nx = n and the rows are cur, as before
+        dsv41_imx_sumsq(lat ? hxl : cur, nx, d_src, d_abs, imx_order, nu, nx, m.imx->gu[(size_t) il], s);
         for (int e = 0; e < E; ++e) m.imx->cnt[(size_t) il * E + e] += (uint64_t) cnt[(size_t) e];
     }
     // the walk: the routed experts in id order; resident from their slots, streamed from the ring

@@ -4,7 +4,7 @@
 # gate / up and IQ4_XS down with the reference model's importance matrix).  The engine is the binary the config names
 # (strata-x; here a pinned copy, so that rebuilding the dev tree never changes a running server).  Port 1234, the model name
 # ernie-5.5-flash, the native 1M context (the DSA layers' caches mapped as a conversation grows).  One server at a time:
-# two engines do not fit this box's memory, so this refuses while another Strata server runs, and before the set is complete
+# two engines do not fit this box's memory, so this refuses while another Strata server runs, and before the set the run config names is complete
 # (the converter gives a file its name only after every tensor was re-read and matched).
 # The RAM headroom is strata-ernie55.json's --resident-headroom-gib (20 since 2026-11-25; delete it or set 28 to go back).
 # Optional server arguments are forwarded unchanged (as launch-dsv4.1-flash-ud-q2kxl.sh); no arguments keeps the config's
@@ -21,13 +21,36 @@ if pgrep -f "serve/server.py --engine strata" >/dev/null 2>&1; then
     echo "$me: a Strata server is running - stop it first (Ctrl+C in its terminal)" >&2
     exit 1
 fi
-set_="$STRATA_MODELS/ernie55-gguf/ERNIE-5.5-Flash-IQ3XXS-IQ4XS"
-for i in 1 2 3; do
-    if [ ! -f "$set_-0000$i-of-00003.gguf" ]; then
-        echo "$me: file $i of the GGUF set is not there yet (moex/tools/ernie55/convert_gguf.cpp writes it)" >&2
-        exit 1
-    fi
-done
+if [ ! -f "$cfg" ]; then
+    echo "$me: the run config $cfg is missing (make it from moex/configs/strata-ernie55.json)" >&2
+    exit 1
+fi
+# the GGUF set the run config names: its "-m", the set's first file (NAME-00001-of-0000K.gguf names all K of them)
+model=$("$STRATA_PYTHON" -c 'import json, sys; a = json.load(open(sys.argv[1]))["args"]; print(a[a.index("-m") + 1])' "$cfg" 2>/dev/null)
+if [ -z "$model" ]; then
+    echo "$me: $(basename "$cfg") names no model (\"-m\" in its args)" >&2
+    exit 1
+fi
+case "$model" in
+    *-00001-of-[0-9][0-9][0-9][0-9][0-9].gguf)
+        base=${model%-00001-of-*}
+        k=${model##*-of-}
+        k=${k%.gguf}
+        n=$(echo "$k" | sed 's/^0*//')
+        i=1
+        while [ "$i" -le "$n" ]; do
+            if [ ! -f "$base-$(printf %05d "$i")-of-$k.gguf" ]; then
+                echo "$me: file $i of $n of the GGUF set $(basename "$base") is not there yet (moex/tools/ernie55/convert_gguf.cpp writes it)" >&2
+                exit 1
+            fi
+            i=$((i + 1))
+        done ;;
+    *)
+        if [ ! -f "$model" ]; then
+            echo "$me: the GGUF file $model that $(basename "$cfg") names is not there" >&2
+            exit 1
+        fi ;;
+esac
 if [ ! -d "$STRATA_X_DATA/tokenizers/ernie55" ]; then
     echo "$me: the tokenizer directory ~/AI/Strata-X-data/tokenizers/ernie55 is missing (tools/strata_tokenizer_families.py extract_hf)" >&2
     exit 1

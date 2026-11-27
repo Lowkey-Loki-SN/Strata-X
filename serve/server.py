@@ -224,7 +224,8 @@ REASONING_CLOSE = "\n</think>\n\n"
 REASONING_WRAP_UP = "\n\nI have thought about this long enough; time to give my answer.\n</think>\n\n"
 # #728: opt-in handling of reasoning that repeats whole passages (which the single-token guard above cannot see).
 # "reasoning_loop_recovery": "stop" ends the reply there; "recover" (or true) goes on from the same output with the
-# low-effort instruction in place of the xhigh one.  Both off by default.
+# low-effort instruction in place of the xhigh one; moex: "wrap" closes the thinking there as the thinking budget does
+# (the family's wrap-up and end tag) and lets the model answer.  All off by default.
 HIGH_EFFORT = EFFORT_TEXT["xhigh"]
 LOW_EFFORT = EFFORT_TEXT["low"]
 LOOP_CHECK_EVERY = 512           # output tokens between two looks at the reasoning (at a clean parser boundary)
@@ -4710,6 +4711,7 @@ class Service:
         timings, before = None, None                    # this request's timings; the engine's `last` before it
         recovery_count, reasoning_text, repeat_coverage = 0, "", 0.0
         looped, next_loop_check = False, LOOP_CHECK_EVERY       # #728: reasoning that repeats whole passages
+        loop_wrapped = False                            # moex: "wrap" closed that thinking (the budget's wrap-up)
         # moex (DSV41_BACKLOG #46): an answer that does (answer_loop_recovery), and a family whose reasoning look also reads
         # the calls the parser holds inside the thinking (FamilySpec.loop_guard_held)
         answer_text, answer_coverage, answer_looped, next_answer_check = "", 0.0, False, LOOP_CHECK_EVERY
@@ -4873,6 +4875,18 @@ class Service:
                                         if self.reasoning_loop_recovery == "stop":
                                             looped = True        # #728: end the reply here, as for a repeated token
                                             break
+                                        if self.reasoning_loop_recovery == "wrap":
+                                            # moex: close the thinking as the thinking budget does (the family's
+                                            # wrap-up and its end tag) and let the model answer from what it thought;
+                                            # once a reply (recovery_count), the answer's own guard still applies
+                                            recovery_count += 1
+                                            loop_wrapped = wrap = True
+                                            with self.status_lock:
+                                                st["reasoning_recoveries"] = recovery_count
+                                            if trace is not None:
+                                                trace["reasoning_recoveries"] = recovery_count
+                                                trace["reasoning_repeat_coverage"] = round(repeat_coverage, 3)
+                                            break
                                         if not emb:              # "recover": not for a request with pictures
                                             recover_prompt = focused_recovery_prompt(self.tok, ids, raw_ids)
                                             if recover_prompt is not None:
@@ -5014,7 +5028,13 @@ class Service:
                         extra = self.tok.encode(text, parse_special=True)
                         if max_new - n - len(extra) < 1:
                             break                       # no room left to answer: "length", as without a budget
-                        if wrap:
+                        if wrap and loop_wrapped:
+                            loop_wrapped = False
+                            print(f"[strata] the thinking repeated the same passages (coverage={repeat_coverage:.3f}, "
+                                  f"reasoning_loop_coverage {self.reasoning_loop_coverage:g}) at {n} tokens: wrapping up "
+                                  "the thinking so the model answers (reasoning_loop_recovery: \"wrap\" in "
+                                  "strata-<model>.json)", flush=True)
+                        elif wrap:
                             print(f"[strata] thinking budget reached ({thought} tokens): wrapping up the thinking",
                                   flush=True)
                         for t in extra:
@@ -7593,11 +7613,11 @@ def main() -> int:
         if budget:
             print(f"[strata] thinking budget: {budget} tokens (reasoning_budget_tokens; a request can set its own)",
                   flush=True)
-    recovery = cfg.get("reasoning_loop_recovery", False)   # #728: false (default) | "stop" | "recover" (true)
+    recovery = cfg.get("reasoning_loop_recovery", False)   # #728: false (default) | "stop" | "recover" (true) | "wrap"
     if recovery is True:
         recovery = "recover"
-    if recovery is not False and recovery not in ("stop", "recover"):
-        raise SystemExit("[strata] config \"reasoning_loop_recovery\" must be false, \"stop\" or \"recover\", "
+    if recovery is not False and recovery not in ("stop", "recover", "wrap"):
+        raise SystemExit("[strata] config \"reasoning_loop_recovery\" must be false, \"stop\", \"recover\" or \"wrap\", "
                          f"not {recovery!r}")
     svc.reasoning_loop_recovery = recovery
     coverage = cfg.get("reasoning_loop_coverage", LOOP_COVERAGE)   # moex (DSV41_PLAN §60): 0 < share <= 1

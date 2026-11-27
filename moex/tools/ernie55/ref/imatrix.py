@@ -11,7 +11,7 @@ dequantized once a layer a set. The statistics are model.py's (per expert: the s
 gate / up, of squared SiTU-GLU outputs for down, and the row count), in fp64, from the calibration set only.
 
     ~/AI/vLLM/.venv/bin/python -I moex/tools/ernie55/ref/imatrix.py --text A.txt:6,B.txt --chunks 16 --len 4096
-        --out ernie55.imx [--kld-text C.txt:4,D.txt --kld-chunks 16 --kld-len 1024 --kld-out ernie55.kld]
+        [--ids-chunks CHAT.ids] --out ernie55.imx [--kld-text C.txt:4,D.txt --kld-chunks 16 --kld-len 1024 --kld-out ernie55.kld]
         [--threads N] [--layers N] [--resume]
 
 FILE:N takes N chunks from FILE (spread over its length); the files without a count share what is left. OUT is rewritten
@@ -86,11 +86,15 @@ def kld_rows(lg: torch.Tensor) -> np.ndarray:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--text", required=True, help="the calibration text files (FILE:N: N chunks from it)")
+    ap.add_argument("--text", default="", help="the calibration text files (FILE:N: N chunks from it)")
+    ap.add_argument("--ids-chunks", default="", help="calibration chunks as token ids: a file, one chunk a line (comma-"
+                    "separated ids, the first --len of each line taken); for text with the chat format's control tokens")
     ap.add_argument("--chunks", type=int, default=16)
     ap.add_argument("--len", type=int, default=4096, help="tokens a calibration chunk (with its BOS)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--kld-text", default="", help="the held-out text files for the KLD base (FILE:N)")
+    ap.add_argument("--kld-ids-chunks", default="", help="held-out chunks as token ids (one a line, the first --kld-len "
+                    "taken), after --kld-text's")
     ap.add_argument("--kld-chunks", type=int, default=16)
     ap.add_argument("--kld-len", type=int, default=1024)
     ap.add_argument("--kld-out", default="")
@@ -102,9 +106,30 @@ def main() -> int:
     if a.threads:
         torch.set_num_threads(a.threads)
     tok = Tokenizer.from_file(str(pathlib.Path(a.model) / "tokenizer.json"))
-    calib = take_chunks(tok, a.text, a.chunks, a.len)
-    kld = bool(a.kld_text and a.kld_out)
-    evalc = take_chunks(tok, a.kld_text, a.kld_chunks, a.kld_len) if kld else []
+    calib = take_chunks(tok, a.text, a.chunks, a.len) if a.text else []
+    if a.ids_chunks:
+        for ln, line in enumerate(pathlib.Path(a.ids_chunks).read_text().splitlines()):
+            ids = [int(x) for x in line.split(",") if x.strip()]
+            if not ids:
+                continue
+            if len(ids) < a.len:
+                raise SystemExit(f"{a.ids_chunks}: line {ln + 1} has {len(ids)} ids, {a.len} needed")
+            calib.append(ids[:a.len])
+        print(f"{a.ids_chunks}: {len(calib) - (a.chunks if a.text else 0)} chunks of {a.len} token ids", flush=True)
+    if not calib and not (a.kld_out and (a.kld_text or a.kld_ids_chunks)):
+        raise SystemExit("no calibration chunks (--text or --ids-chunks), and no KLD base asked for")
+    kld = bool((a.kld_text or a.kld_ids_chunks) and a.kld_out)
+    evalc = take_chunks(tok, a.kld_text, a.kld_chunks, a.kld_len) if kld and a.kld_text else []
+    if kld and a.kld_ids_chunks:
+        n0 = len(evalc)
+        for ln, line in enumerate(pathlib.Path(a.kld_ids_chunks).read_text().splitlines()):
+            ids = [int(x) for x in line.split(",") if x.strip()]
+            if not ids:
+                continue
+            if len(ids) < a.kld_len:
+                raise SystemExit(f"{a.kld_ids_chunks}: line {ln + 1} has {len(ids)} ids, {a.kld_len} needed")
+            evalc.append(ids[:a.kld_len])
+        print(f"{a.kld_ids_chunks}: {len(evalc) - n0} held-out chunks of {a.kld_len} token ids", flush=True)
     m = M.Model(a.model)
     c = m.cfg
     n_layer = a.layers or c.n_layer
@@ -119,7 +144,7 @@ def main() -> int:
         print(f"resuming at layer {first}", flush=True)
     else:
         with torch.inference_mode():
-            R = torch.stack([m.embed(ch) for ch in calib])                          # [C, T, 4, 4096]
+            R = torch.stack([m.embed(ch) for ch in calib]) if calib else None       # [C, T, 4, 4096]; none: a KLD base only
             Re = torch.stack([m.embed(ch) for ch in evalc]) if evalc else None     # [Ce, Te, 4, 4096]
     pos, pos_e = torch.arange(a.len), torch.arange(a.kld_len)
     t0 = time.time()
@@ -135,11 +160,13 @@ def main() -> int:
     with torch.inference_mode():
         for il in range(first, n_layer):
             t1 = time.time()
-            R = run_set(il, R, pos, True)
+            if R is not None:
+                R = run_set(il, R, pos, True)
             if Re is not None:
                 Re = run_set(il, Re, pos_e, False)
             m.clear()
-            imx.save(out)
+            if R is not None:
+                imx.save(out)
             if (il + 1) % 6 == 0 and il + 1 < n_layer:   # (the streams: 4.3 GB at 16 x 4,096, every 6 layers)
                 torch.save({"R": R, "Re": Re, "next": il + 1, "gu": imx.gu, "dn": imx.dn, "cnt": imx.cnt}, state)
             cnt = imx.cnt[il]
@@ -159,7 +186,7 @@ def main() -> int:
             print(f"{a.kld_out}: {len(evalc)} chunks of {a.kld_len}, positions {first_row}-{a.kld_len - 2} scored", flush=True)
     if n_layer == c.n_layer:
         state.unlink(missing_ok=True)
-    print(f"{out}: {a.chunks} chunks of {a.len} tokens through {n_layer - first} layers in {time.time() - t0:.0f} s")
+    print(f"{out}: {len(calib)} chunks of {a.len} tokens through {n_layer - first} layers in {time.time() - t0:.0f} s")
     return 0
 
 

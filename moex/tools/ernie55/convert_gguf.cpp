@@ -8,6 +8,15 @@
 //   iq4_xs, iq4_nl, iq3_s, iq3_xxs, iq2_m, ...); LAYERS: a list like 1-6,40-42 (default: every MoE layer). Later --types
 //   override earlier ones. Default: gu=q8_0, d=q8_0 (a near-lossless set, for checks).
 //   --layers N: the first N layers only (a slice for the engine's checks; the head and its reduce kept).
+//   --reuse SET.gguf (any file of an earlier set): every tensor the plan makes exactly as that set holds it (name, type, shape,
+//   bytes; the routed experts only when the set records the same importance matrix file) is copied, not made again.
+//   --fakequant (with --imatrix): no set; stdin "LAYER EXPERT GU_TYPE D_TYPE" lines, stdout that expert quantized in those
+//   types and decoded (ernie55_expert_dq's format), for the reference model's checks of a recipe before it is written.
+//   --measure OUT.tsv [--measure-types t1,t2,...] [--measure-experts K] [--measure-layers LIST] (with --imatrix): no set; per
+//   MoE layer, role (gate / up / down) and type, the routed experts' quantization error weighted as the output sees it,
+//   sum_rows sum_j imx_j (w - q(w))^2 / sum_rows sum_j imx_j w^2 (imx_j the column's mean squared input), over K experts
+//   picked evenly along the layer's cumulative expert use (so their plain mean is the use-weighted mean), each quantized as
+//   the set's own (ggml_quantize_chunk with the expert's importance weights) and decoded by ggml.
 //   PREFIX-00001-of-0000K.gguf ...: llama.cpp's split layout (split.no / split.count / split.tensors.count in every file,
 //   the model's keys in the first); tensors 4096-aligned, so every expert slice is whole pages (the loader's O_DIRECT reads).
 //
@@ -39,6 +48,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -178,9 +188,14 @@ uint64_t fnv(const uint8_t* p, uint64_t n, uint64_t h = 1469598103934665603ull) 
 uint64_t row_bytes(ggml_type t, int64_t n) { return (uint64_t) ggml_row_size(t, n); }
 
 ggml_type type_of(const std::string& s) {
+    // (case aside: ggml names the k-quants q4_K, q6_K, ...; the usage line's q4_k is the same type)
+    auto lower = [](std::string x) {
+        for (char& ch : x) ch = (char) std::tolower((unsigned char) ch);
+        return x;
+    };
     for (int i = 0; i < GGML_TYPE_COUNT; ++i) {
         const char* n = ggml_type_name((ggml_type) i);
-        if (n && s == n) return (ggml_type) i;
+        if (n && lower(s) == lower(n)) return (ggml_type) i;
     }
     die("an unknown ggml type " + s);
 }
@@ -298,10 +313,10 @@ std::vector<int> parse_layers(const std::string& s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::string model, out, imx_path;
-    int threads = (int) std::thread::hardware_concurrency(), n_layers_out = -1;
+    std::string model, out, imx_path, reuse_path, measure_out, measure_types = "iq3_xxs,iq3_s,q3_k,iq4_xs,q4_k", measure_layers;
+    int threads = (int) std::thread::hardware_concurrency(), n_layers_out = -1, measure_k = 16;
     double split_gb = 48.0;
-    bool dry = false;
+    bool dry = false, fakequant = false;
     std::vector<std::string> types;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -317,8 +332,15 @@ int main(int argc, char** argv) {
         else if (a == "--split-gb") split_gb = std::atof(next().c_str());
         else if (a == "--threads") threads = std::max(1, std::atoi(next().c_str()));
         else if (a == "--dry-run") dry = true;
+        else if (a == "--reuse") reuse_path = next();
+        else if (a == "--measure") measure_out = next();
+        else if (a == "--fakequant") fakequant = true;
+        else if (a == "--measure-types") measure_types = next();
+        else if (a == "--measure-experts") measure_k = std::max(1, std::atoi(next().c_str()));
+        else if (a == "--measure-layers") measure_layers = next();
         else die("unknown option " + a);
     }
+    if ((!measure_out.empty() || fakequant) && out.empty()) out = "-";   // (--measure and --fakequant write no set)
     if (model.empty() || out.empty()) die("usage: --model DIR --out PREFIX [--types gu=TYPE[:LAYERS]] [--imatrix F] [--layers N]");
     init_e4m3();
     ggml_quantize_init(GGML_TYPE_IQ3_XXS);   // (the i-quants' grids, once, before the threads)
@@ -384,6 +406,180 @@ int main(int argc, char** argv) {
 
     Src src;
     src.open(model);
+
+    // ---- --measure: the routed experts' quantization error per layer, role and type (nothing written but the table)
+    // ---- --fakequant: on stdin "LAYER EXPERT GU_TYPE D_TYPE" lines ("q" or EOF ends); on stdout that routed expert's gate,
+    // up and down quantized as a set would hold them (ggml_quantize_chunk with the expert's importance weights) and decoded,
+    // F32 row-major [out][in] each, after a 16-byte header {n_ff, n_lat, ok, 0} - ernie55_expert_dq's format, so the
+    // reference model (ref/oracle_dump.py ExpertDQ) reads a recipe's experts without a set being written
+    if (fakequant) {
+        std::vector<float> y;
+        std::vector<uint8_t> q;
+        char line[256];
+        while (std::fgets(line, sizeof line, stdin)) {
+            if (line[0] == 'q') break;
+            int il = -1;
+            long long e = -1;
+            char tg[64] = {0}, td[64] = {0};
+            if (std::sscanf(line, "%d %lld %63s %63s", &il, &e, tg, td) != 4) continue;
+            int32_t hdr[4] = {(int32_t) nf, (int32_t) lat, 0, 0};
+            if (il < first_dense || il >= n_layer || e < 0 || e >= E) {
+                std::fwrite(hdr, sizeof hdr, 1, stdout);
+                std::fflush(stdout);
+                continue;
+            }
+            hdr[2] = 1;
+            std::fwrite(hdr, sizeof hdr, 1, stdout);
+            const std::string m = "model.layers." + std::to_string(il) + ".block_sparse_moe.experts." + std::to_string(e) + ".";
+            for (const char* w : {"w1", "w3", "w2"}) {
+                const bool dn_role = std::string(w) == "w2";
+                const ggml_type t = type_of(dn_role ? td : tg);
+                int64_t rows, cols;
+                std::vector<float> v = src.f32(m + w + ".weight", rows, cols);
+                std::vector<float> imw((size_t) cols);
+                const float* qw = nullptr;
+                const size_t k = (size_t) il * imx.n_expert + (size_t) e;
+                if (!imx.cnt.empty() && imx.cnt[k] > 0) {
+                    const double* sm = dn_role ? &imx.dn[k * imx.d_ff] : &imx.gu[k * imx.d_in];
+                    for (int64_t j = 0; j < cols; ++j) imw[(size_t) j] = (float) (sm[j] / (double) imx.cnt[k]);
+                    qw = imw.data();
+                }
+                const size_t rb = row_bytes(t, cols);
+                q.resize(rb * (size_t) rows);
+                y.resize((size_t) (rows * cols));
+                // the rows over the threads, as ggml_quantize_chunk splits nothing itself (each row's values are its own)
+                const int nth = std::max(1, std::min<int>(threads, (int) rows));
+                std::vector<std::thread> th;
+                for (int wk = 0; wk < nth; ++wk)
+                    th.emplace_back([&, wk] {
+                        const int64_t r0 = rows * wk / nth, r1 = rows * (wk + 1) / nth;
+                        if (r1 <= r0) return;
+                        ggml_quantize_chunk(t, v.data() + r0 * cols, q.data() + (size_t) r0 * rb, 0, r1 - r0, cols, qw);
+                        const auto* tr = ggml_get_type_traits(t);
+                        for (int64_t r = r0; r < r1; ++r) tr->to_float(q.data() + (size_t) r * rb, y.data() + r * cols, cols);
+                    });
+                for (auto& x : th) x.join();
+                std::fwrite(y.data(), sizeof(float), y.size(), stdout);
+            }
+            std::fflush(stdout);
+        }
+        return 0;
+    }
+    if (!measure_out.empty()) {
+        if (imx.cnt.empty()) die("--measure needs --imatrix (the experts' use and their columns' weights)");
+        std::vector<ggml_type> mts;
+        for (size_t i = 0; i < measure_types.size();) {
+            const size_t j = measure_types.find(',', i);
+            const std::string ty = measure_types.substr(i, j == std::string::npos ? std::string::npos : j - i);
+            if (!ty.empty()) mts.push_back(type_of(ty));
+            if (j == std::string::npos) break;
+            i = j + 1;
+        }
+        if (mts.empty()) die("--measure-types: no type");
+        for (ggml_type t : mts) ggml_quantize_init(t);
+        std::vector<int> mls;
+        if (measure_layers.empty())
+            for (int il = first_dense; il < n_layer; ++il) mls.push_back(il);
+        else
+            mls = parse_layers(measure_layers);
+        FILE* fo = std::fopen(measure_out.c_str(), "w");
+        if (!fo) die(measure_out + ": cannot write");
+        std::fprintf(fo, "layer\trole\ttype\tbpw\trel_err\tsampled\n");
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int il : mls) {
+            if (il < first_dense || il >= n_layer) die("--measure-layers: " + std::to_string(il) + " is not a MoE layer");
+            // the sample: measure_k positions spread evenly over the layer's cumulative expert use (the importance matrix's
+            // row counts), so each pick stands for the same share of the routed rows and their plain mean is the use-weighted
+            // mean (a hot expert can be picked more than once: its multiplicity)
+            std::vector<double> cum((size_t) E);
+            double tot = 0;
+            for (int64_t e = 0; e < E; ++e) cum[(size_t) e] = tot += (double) imx.cnt[(size_t) il * imx.n_expert + (size_t) e];
+            if (tot <= 0) die("layer " + std::to_string(il) + ": the importance matrix saw none of its experts");
+            std::map<int64_t, int> mult;
+            for (int k = 0; k < measure_k; ++k) {
+                const double at = (k + 0.5) * tot / measure_k;
+                const int64_t e = std::lower_bound(cum.begin(), cum.end(), at) - cum.begin();
+                ++mult[std::min<int64_t>(e, E - 1)];
+            }
+            std::vector<int64_t> picks;
+            for (const auto& [e, c] : mult) picks.push_back(e);
+            for (const char* role : {"gate", "up", "down"}) {
+                const std::string w = std::string(role) == "gate" ? "w1" : std::string(role) == "up" ? "w3" : "w2";
+                const bool dn_role = std::string(role) == "down";
+                const int64_t cols = dn_role ? nf : lat, rows = dn_role ? lat : nf;
+                const std::string m = "model.layers." + std::to_string(il) + ".block_sparse_moe.";
+                std::vector<std::vector<float>> vs(picks.size()), ws(picks.size());
+                std::vector<double> sig(picks.size(), 0.0);
+                std::vector<double> err(picks.size() * mts.size(), 0.0);
+                std::atomic<size_t> next{0};
+                auto read = [&]() {
+                    for (size_t p; (p = next.fetch_add(1)) < picks.size();) {
+                        int64_t r, c;
+                        vs[p] = src.f32(m + "experts." + std::to_string(picks[p]) + "." + w + ".weight", r, c);
+                        if (r != rows || c != cols) die(m + "experts: an expert of another shape");
+                        const size_t k = (size_t) il * imx.n_expert + (size_t) picks[p];
+                        const double* s = dn_role ? &imx.dn[k * imx.d_ff] : &imx.gu[k * imx.d_in];
+                        ws[p].resize((size_t) cols);
+                        for (int64_t j = 0; j < cols; ++j) ws[p][(size_t) j] = (float) (s[j] / (double) imx.cnt[k]);
+                        double sg = 0;
+                        for (int64_t i = 0; i < rows; ++i)
+                            for (int64_t j = 0; j < cols; ++j) {
+                                const double x = vs[p][(size_t) (i * cols + j)];
+                                sg += (double) ws[p][(size_t) j] * x * x;
+                            }
+                        sig[p] = sg;
+                    }
+                };
+                {
+                    std::vector<std::thread> th;
+                    for (int k = 0; k < std::min<int>(threads, (int) picks.size()); ++k) th.emplace_back(read);
+                    for (auto& x : th) x.join();
+                }
+                next = 0;
+                auto work = [&]() {   // one job: one picked expert in one type, quantized as the converter does, decoded by ggml
+                    std::vector<uint8_t> q;
+                    std::vector<float> y((size_t) cols);
+                    for (size_t jb; (jb = next.fetch_add(1)) < picks.size() * mts.size();) {
+                        const size_t p = jb / mts.size(), ti = jb % mts.size();
+                        const ggml_type t = mts[ti];
+                        const size_t rb = row_bytes(t, cols);
+                        q.resize(rb * (size_t) rows);
+                        const size_t got = ggml_quantize_chunk(t, vs[p].data(), q.data(), 0, rows, cols, ws[p].data());
+                        if (got != rb * (size_t) rows) die("ggml_quantize_chunk wrote another size");
+                        const auto* tr = ggml_get_type_traits(t);
+                        double e2 = 0;
+                        for (int64_t i = 0; i < rows; ++i) {
+                            tr->to_float(q.data() + (size_t) i * rb, y.data(), cols);
+                            const float* x = vs[p].data() + i * cols;
+                            for (int64_t j = 0; j < cols; ++j) {
+                                const double d = (double) x[j] - (double) y[(size_t) j];
+                                e2 += (double) ws[p][(size_t) j] * d * d;
+                            }
+                        }
+                        err[jb] = e2;
+                    }
+                };
+                {
+                    std::vector<std::thread> th;
+                    for (int k = 0; k < threads; ++k) th.emplace_back(work);
+                    for (auto& x : th) x.join();
+                }
+                for (size_t ti = 0; ti < mts.size(); ++ti) {
+                    double rel = 0;
+                    for (size_t p = 0; p < picks.size(); ++p)
+                        rel += (double) mult[picks[p]] * (sig[p] > 0 ? err[p * mts.size() + ti] / sig[p] : 0.0);
+                    rel /= (double) measure_k;
+                    const double bpw = 8.0 * (double) row_bytes(mts[ti], cols) / (double) cols;
+                    std::fprintf(fo, "%d\t%s\t%s\t%.4f\t%.6e\t%zu\n", il, role, ggml_type_name(mts[ti]), bpw, rel, picks.size());
+                }
+                std::fflush(fo);
+            }
+            std::fprintf(stderr, "convert_gguf: --measure layer %d done (%zu experts, %.0f s)\n", il, picks.size(),
+                         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+        }
+        std::fclose(fo);
+        return 0;
+    }
 
     // ---- the plan of output tensors
     std::vector<std::unique_ptr<OutT>> plan;
@@ -650,6 +846,38 @@ int main(int argc, char** argv) {
     for (auto& t : plan) total += t->nbytes;
     std::fprintf(stderr, "convert_gguf: %zu tensors, %.2f GB, %zu files, %d layers%s\n", plan.size(), total / 1e9, files.size(), nl,
                  imx_path.empty() ? "" : ", with the importance matrix");
+    // ---- --reuse SET: a tensor the plan makes exactly as an earlier set holds it (the same name, type, shape and bytes - and
+    // for the routed experts the same importance matrix, by the file name the set records) is copied from it instead of being
+    // made again; a tensor of another type is made. The copies are hashed and re-read like the rest.
+    std::unique_ptr<strata::GgufModel> reuse;
+    if (!reuse_path.empty()) {
+        reuse = std::make_unique<strata::GgufModel>(strata::GgufModel::open(reuse_path));
+        const strata::MetaValue* rv = reuse->meta().get("ernie55.convert.imatrix");
+        const std::string want = imx_path.empty() ? "none" : imx_path.substr(imx_path.find_last_of("/\\") + 1);
+        // (the published set's key reads "NAME: what it was made from" - moex/docs/ERNIE55_PLAN.md, the upload)
+        const bool same_imx = rv && (rv->s == want || rv->s.rfind(want + ":", 0) == 0);
+        int n_copy = 0, n_make = 0;
+        uint64_t b_copy = 0;
+        for (auto& t : plan) {
+            size_t sh = 0;
+            const strata::TensorInfo* ti = reuse->find(t->name, &sh);
+            const bool exps = t->name.find("_exps") != std::string::npos;
+            bool ok = ti && ti->type == (uint32_t) t->type && ti->shape.size() == t->ne.size() && strata::tensor_payload_bytes(*ti) == t->nbytes &&
+                      reuse->in_bounds(*ti, sh) && (!exps || same_imx);
+            for (size_t d = 0; ok && d < t->ne.size(); ++d) ok = ti->shape[d] == (uint64_t) t->ne[d];
+            if (!ok) {
+                ++n_make;
+                continue;
+            }
+            const uint8_t* p = reuse->shard(sh).tensor_data(*ti);
+            const uint64_t nb = t->nbytes;
+            t->fill = [p, nb](uint8_t* dst) { std::memcpy(dst, p, nb); };
+            ++n_copy;
+            b_copy += nb;
+        }
+        std::fprintf(stderr, "convert_gguf: --reuse %s: %d tensors (%.2f GB) copied, %d made%s\n", reuse_path.c_str(), n_copy, b_copy / 1e9,
+                     n_make, same_imx ? "" : " (its experts were quantized with another importance matrix: none of them copied)");
+    }
     if (dry) {
         for (auto& t : plan)
             if (t->name.find("_exps") != std::string::npos)

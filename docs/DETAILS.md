@@ -795,8 +795,8 @@ print(r.choices[0].message.content)
   token 0 (the client saw one normal answer); the 60th, mid-reply in the next turn, ended that reply as `"length"`
   after 58 tokens; the turn after it reused 0 cached tokens and answered normally.
 - **Repeated reasoning (opt-in, #728).** The single-token guard above does not see a model that repeats whole
-  passages. `"reasoning_loop_recovery"` in `strata-<model>.json` is `false` (the default), `"stop"` or `"recover"`
-  (`true` means `"recover"`). Every 512 output tokens, at a complete character and parser boundary, the reasoning is
+  passages. `"reasoning_loop_recovery"` in `strata-<model>.json` is `false` (the default), `"stop"`, `"recover"`
+  (`true` means `"recover"`) or, in the fork, `"wrap"`. Every 512 output tokens, at a complete character and parser boundary, the reasoning is
   measured over its last 2,000 words and punctuation marks (counting passages over the last 30,000 words), and its
   last 2,048 characters are checked for a period of at most 64 characters (#1753: a loop written as one long word,
   such as a 24k-digit string cycling an 11-digit pattern, is a single word to the count and never repeats one
@@ -811,6 +811,13 @@ print(r.choices[0].message.content)
   `"recover"` needs the exact xhigh sentence in the first system message and skips requests with images; re-reading
   the changed prefix costs prompt time. Either mode can mistake repeated useful code or checks for a loop, so keep
   the recorded answer quality alongside the completion rate when testing it.
+  moex: `"wrap"` closes the thinking where the loop was found, the way a thinking budget does (the family's wrap-up
+  sentence and its end tag, read as a continuation of the cached prefix), and lets the model answer from what it
+  thought: once a reply, in the same output limit, any family (it needs no effort sentence). The answer's own guard
+  (`"answer_loop_recovery"`) still applies after it. Checked with a scripted engine (serve/test_reasoning_loop_recovery.py;
+  ERNIE-5.5's family with its tokenizer): a thinking that cycles six short lines is closed at the first look that reads
+  it as a full repeat and the scripted answer follows, `"stop"`. Like the other modes it is a policy, not a fix of the
+  model: the answer comes from a thinking that had stalled.
 - **Repeated answers (moex, opt-in, DSV41_BACKLOG #46).** The look above reads only the reasoning; an answer that repeats
   itself ran on to `max_tokens` (with none, the rest of the context). `"answer_loop_recovery": "stop"` in
   `strata-<model>.json` takes the same look at the answer every 512 tokens, at a stricter 50% of the last 2,000 words

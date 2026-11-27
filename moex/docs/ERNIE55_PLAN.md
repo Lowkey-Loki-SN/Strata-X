@@ -467,6 +467,8 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
   base, when it is taken up, is the engine's V4.1 DSpark.
 - **Quality**: the set's KLD 0.063 is what fits: a richer mix (IQ3_S gate / up on the sensitive layers, ~+2.6 GiB) would
   take the lend region's RAM, and a second 135 GB set does not fit the drive's 31 GB free.
+  2026-11-27: measured - §10 (IQ3_S for all three is worse at the same size; IQ3_S gate/up with IQ4_XS down, +7.2%, ~-31%
+  at the MoE's output).
 - **The moex family tests** (moex.tests.test_family_parsers / props / merge): 60 failures in other families' cases
   (mimo2, glm5, deepseek4: quoted think ends, a tool call's trailing newline) - the same at f36bca4f without this work.
 
@@ -551,3 +553,88 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
   gu=iq3_xxs --types d=iq4_xs --imatrix ~/AI/Strata-X-data/ernie55-quality/ernie55-16x4096.imx --split-gb 48` (a layer
   range per type: `--types d=iq3_s:1-20`); `--layers 8` writes a test slice. The importance matrix and the KLD base:
   `ref/imatrix.py` (one layer-major pass of the reference model, ~2 h on the CPU).
+
+## 10. The loop of 2026-11-26, and the recipe (2026-11-27)
+
+The 41,661-token runaway of 2026-11-26 (the session the user named, decoded to a scratch folder for this and deleted
+after) was a thinking that never closed: ~29K tokens of planning, then a cycle of six short lines that took the
+thinking over (from reply token ~36.4K on, no other line). This section is what the night of 2026-11-27 measured about it,
+and about the set's recipe. Every number below came from a run that night; the tools are in moex/tools/ernie55 (`kld_compare.py`,
+`imx_tools.py`, `ref/kld_base.py`, `ref/recipe_check.py`, convert_gguf_ernie55's `--measure` and `--fakequant`).
+
+- **The sequence**: the request rebuilt from the session (its system prompt, four user turns, 21 tools, effort max) renders
+  to 7,931 tokens - the server log's count for that request - and the reasoning re-tokenizes to 41,652 of the 41,661
+  generated. Together 49,583 positions; a KLD base of one chunk scores positions 24,791-49,581 (the reply's tokens
+  16,861-41,651): the planning, the last ~4K tokens before the cycle and the cycle itself.
+- **The engine at depth** (the live binary and run config, `--kld ... --kld-save`): the first half read through the prompt
+  path and the scored half through decode windows of 8, against everything through decode windows (`--kld-mode windows`):
+  mean KLD 0.004 (median 0.00000), the same top token at 98.9% of the positions; in the cycle 0.00003, 100%. The engine's
+  own probability of `</ernie:think>` (id 20): one position above 1% in the planning (0.14, in the middle of a line), at the
+  encoding's floor (~1e-7) through the last ~4K tokens and the whole cycle; the
+  cycle's tokens at a mean probability of 0.977.
+- **FP8 at depth** (`ref/kld_base.py`: the reference model, fp32 with the release's exact FP8 weights, over the same 49,583
+  tokens; 7,447 s on the CPU; `kld_compare.py`): against the engine's rows, mean KL 0.067 over the scored half (median
+  0.00001), the same top token at 96.0% - by region, the planning (reply tokens 16.9K-32.1K) 0.086 / 94.9%, the ~4K before
+  the cycle 0.081 / 94.9%, the cycle 0.00025 / 99.96%. In bins of 2,048 positions from 24.8K to 45.3K: 0.03-0.12, with no
+  growth (the set's KLD on the plain-text base is 0.063 at positions 2,048-4,094). The engine's two read paths stand at the
+  same distance (0.067, 0.064).
+- **What FP8 does on that text**: it never closes the thinking either - `</ernie:think>` below 0.0005 at every one of the
+  planning's 1,137 line starts and the last ~4K's 400 (the engine's the same; FP8's highest anywhere 0.056, mid-line), at the
+  encoding's floor through the last ~4K and the cycle (mean 1.3e-7 and 1.1e-7); the cycle's tokens at a mean probability of 0.977 (the engine 0.977). At the first cycle lines (from reply
+  token ~30.9K) the two give the line's first token similar odds (FP8 0.084 / 0.605 / 0.189 / 0.642 ..., the engine 0.081 /
+  0.670 / 0.123 / 0.928 ...); over the planning's 14 cycle lines the quant leaned more to them (0.74 against 0.54), over the
+  last ~4K's 110 lines about the same (0.87 / 0.83).
+- **So**: on this request the stall is the model's own - the exact weights in an fp32 implementation of the references'
+  arithmetic plan without closing and continue the cycle as the set does; neither the engine nor the quantization made it.
+  Not shown: whether FP8 would have reached such a cycle on a trajectory of its own (the text was sampled from the set).
+  What ends it is the server: since this night `"reasoning_loop_recovery": "wrap"` in the run config (serve/server.py; at
+  `"reasoning_loop_coverage"` 1.0 it would have fired at ~37.8K reply tokens on this text) closes the thinking with the
+  family's wrap-up and lets the model answer, where `"stop"` ended the reply with none. On the real engine (the live
+  binary, a test server): the same wrap-up path, reached through a thinking budget of 150 tokens, closed the thinking
+  mid-sentence and the model answered in full (finish "stop", 587 tokens). A loop could not be provoked on demand: asked to
+  write one line 400 times in its thinking, the model declined ("filler text doesn't accomplish anything") and answered. A thinking budget
+  (`reasoning_budget_tokens`) would end such a planning earlier, but it also cuts a long thinking that is not looping: not set.
+
+### The recipe
+
+- **The routed experts' quantization error by type** (`convert_gguf_ernie55 --measure`, 16 experts a layer picked evenly
+  along each layer's use, the set's importance matrix as the converter uses it; the error power the output sees,
+  sum_j imx_j (w - q(w))^2 over sum_j imx_j w^2): nearly the same in every layer - gate and up IQ3_XXS 2.98-3.26% (mean
+  3.20%), IQ3_S 1.83%, Q3_K 2.07%, IQ4_XS 0.57%, Q4_K 0.49%; down IQ3_XXS 1.46-2.88% (2.41%), IQ3_S 1.44%, IQ4_XS
+  0.38-0.54% (0.47%). Moving bits between layers has little to gain from the weights themselves.
+- **What reaches the MoE's output** (the reference model on 512 tokens of held-out text, this repository's docs; the routed
+  experts' combined output recomputed with the set's gate/up, its down, or all three): layer 2 / 12 / 22 / 32 / 41 -
+  gate+up 0.914 / 2.258 / 1.690 / 2.224 / 1.496%, down 0.214 / 0.316 / 0.205 / 0.238 / 0.132%, all three the sum. Gate and
+  up carry 81-92% of the error.
+- **IQ3_S for all three** (10.31 bits a value triple, the set 10.375): measured directly, not projected - the candidate's
+  experts quantized by the converter's own code (`--fakequant`, bit for bit the set's quantization when given the set's
+  recipe), the same tokens: layer 12 2.844% against the set's 2.568% (+10.7%), layer 22 2.121% / 1.887% (+12.4%), layer 41
+  1.726% / 1.618% (+6.7%). Its IQ3_S gate/up alone 1.471 / 1.105 / 0.968% (the set's IQ3_XXS 2.258 / 1.690 / 1.496), its IQ3_S
+  down alone 1.032 / 0.718 / 0.487% (the set's IQ4_XS 0.316 / 0.205 / 0.132). A projection from the weight errors had it
+  13-23% better; it is worse at every layer measured. Spending fewer bits on gate/up instead (IQ2_S, 6.1% at the weights)
+  would double the larger share. At the set's size its recipe stays.
+- **A bigger calibration set** (the engine's importance matrix, `strata-x --imatrix`, after this night's fix for a latent MoE:
+  over the reference's own 16 chunks it matched the reference's matrix - gate/up cosine 0.9993-1.0000, down 0.993-0.998;
+  then 64 chunks of the same calibration files, none of the KLD yardstick's held-out ones, merged with the reference's 16 by
+  `imx_tools.py`: `ernie55-plain80.imx`, 137.6M routed rows, 21,439 experts seen against 21,327): down's column importance
+  moved 35-60% (relative L2) from the 16-chunk matrix, the quantization error at the MoE's output 0.1 / 0.3 / 2.0% at layers 12
+  / 22 / 41 (the set's recipe, `recipe_check.py --no-bit-check`). The importance matrix's size is not a lever here.
+- **IQ3_S gate/up with IQ4_XS down** (11.125 bits a triple, +7.2%; experts 125.45 GB against 117.0, the set 143.5 GB),
+  measured as one recipe: layer 12 1.771% against the set's 2.568% (-31.1%), layer 22 1.301% / 1.887% (-31.1%), layer 41
+  1.097% / 1.618% (-32.2%). The quality step this box can take, for ~8.4 GB more RAM or reads.
+- **The set built** (`convert_gguf_ernie55 --types gu=iq3_s --types d=iq4_xs --imatrix ernie55-plain80.imx --reuse <the
+  IQ3_XXS set>`: the 18.09 GB of dense tensors copied, the experts made; 5,533 s; every tensor re-read the same):
+  `~/AI/Models/ernie55-gguf/ERNIE-5.5-Flash-IQ3S-IQ4XS-0000N-of-00003.gguf`, 143.52 GB. On the KLD yardstick (6 x 4,096,
+  positions 2,048-4,094; the live binary and run config, the same night): **mean KLD 0.0389 +- 0.0013** (median 0.0039,
+  99th percentile 0.65), the same top token at **95.07%**, perplexity 1.75% above the reference's - the IQ3_XXS set measured
+  again beside it 0.0629 +- 0.0020 (median 0.0068, 99th 1.00), 93.20%, 2.93%. Its load at the same `--resident-headroom-gib
+  20`: 4,569 experts in VRAM against 4,899 (each 7.2% larger), the RAM copy 94.69 GiB against 92.88 (the complement 91.99
+  GiB, all of it; 0.00 GiB read from the GGUF), the lend region 401 experts against 1,634 - slots lent to the caches in a
+  long conversation re-read more of their experts from the file. At depth (the loop's 49,583 tokens, its rows against the
+  FP8 reference's): KL 0.0276 against the IQ3_XXS set's 0.0668 over positions 24.8K-49.6K, the planning 0.0365 / 0.0858,
+  the ~4K before the cycle 0.0298 / 0.0813, the same top token in the planning 96.3% / 94.9%; in the cycle it continues as
+  FP8 does (0.977, the close at the floor). Decode (`--decode-runs w1,w1,w1`, 512 greedy tokens after a warm-up of 256, the
+  same prompt, back to back): 31.07 / 31.51 / 31.68 T/s against 33.19 / 32.79 / 32.28 (-4.1%), the CPU pool 10.8-11.8 ms a
+  token against 10.3-11.0. The server's end-to-end checks (moex/tools/ernie55/server_checks.py, the public checkout's
+  server): 8 of 8 PASS. Since 2026-11-27 both local run configs name it (`strata-ernie55.json.bak-iq3xxs-20261127` beside
+  each is the one before); the template still names the IQ3_XXS set (the files the README's step 3 downloads).
