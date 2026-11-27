@@ -819,9 +819,7 @@ print(r.choices[0].message.content)
   it as a full repeat and the scripted answer follows, `"stop"`. On the real engine (ERNIE-5.5, a stalled reasoning resumed
   from its own tokens, the request's tools): wrapped up at 2,560 and 3,072 generated tokens in two runs, and the model went
   on with its task (a tool call), where the original reply had run 41,661 tokens. Like the other modes it is a policy, not
-  a fix of the model: the answer comes from a thinking that had stalled. ERNIE-5.5's run config pairs it with a thinking
-  budget (`"reasoning_budget_tokens": 32768`, sized from 774 requests whose longest normal reply was 12,782 tokens), so a
-  thinking never runs into the length where that one stalled (moex/docs/ERNIE55_PLAN.md section 10).
+  a fix of the model: the answer comes from a thinking that had stalled.
 - **Repeated answers (moex, opt-in, DSV41_BACKLOG #46).** The look above reads only the reasoning; an answer that repeats
   itself ran on to `max_tokens` (with none, the rest of the context). `"answer_loop_recovery": "stop"` in
   `strata-<model>.json` takes the same look at the answer every 512 tokens, at a stricter 50% of the last 2,000 words

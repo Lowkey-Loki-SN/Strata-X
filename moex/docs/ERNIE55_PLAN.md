@@ -620,17 +620,12 @@ and about the set's recipe. Every number below came from a run that night; the t
   mean NLL 2.649 / 2.486 / 2.309 (perplexity 14.1 / 12.0 / 10.1): no plateau or rise to 48K. With the passphrases found at
   50% and 95% of a 240,943-token document (above), the engine and the reference are not where the stall comes from; what
   this box cannot test is Baidu's own model and serving.
-- **Keeping a reply out of the stall: the thinking budget** (2026-11-27 morning). The stall formed only after a very long
-  planning - coherent to ~29K reply tokens, the first cycle lines from ~31K, nothing else from 36.4K - and closing that
-  thinking at 24K (the family's wrap-up, as a budget closes it) let the model go on with its task (one line and a `bash`
-  call, above). The run config now also says `"reasoning_budget_tokens": 32768`: the server closes any thinking at 32,768
-  tokens the same way and the model answers (a request can set its own, 0 none). Sized from this box's own use - the dev
-  server's log, 774 ERNIE-5.5 requests: generated tokens a reply median 376, 90th percentile 1,642, 99th 4,896, the longest
-  normal one 12,782 (finish "stop"); only the stalled one past 16,384 (41,661, cancelled) - so it touches none of the 773
-  others, at 2.5 times the longest. With "wrap" the two bound a reply: a cycle ends at the guard's look (2,560 and 3,072
-  generated tokens on the real loop), and no thinking runs past 32,768 tokens, where this planning had not yet
-  degenerated. What they cannot do is make the weights plan differently: a reply that needs more than 32,768 tokens of
-  thinking is answered from what it thought by then. A thinking budget
+- **No thinking budget** (2026-11-27, the user: "We already have the loop guard so why cap? Let the model think free"): the
+  run config sets no `reasoning_budget_tokens`, so a thinking runs as long as the model takes it; what ends a cycle is the
+  loop guard ("wrap", at its look: 2,560 and 3,072 generated tokens on the real loop). A budget of 32,768 was in the
+  template for an hour that morning (public b0867eb8) and is gone again. For the record, from that hour: the dev server's
+  log of 774 ERNIE-5.5 requests had generated tokens a reply median 376, 99th percentile 4,896, the longest normal one
+  12,782, and only the stalled one past 16,384. A thinking budget
   (`reasoning_budget_tokens`) would end such a planning earlier, but it also cuts a long thinking that is not looping: not set.
 
 ### The recipe
@@ -683,3 +678,8 @@ and about the set's recipe. Every number below came from a run that night; the t
   25-27 0.00111, 28-30 0.00241, 31-33 0.00197, 34-36 0.00233, 37-39 0.00123, 40-42 0.00148; all layers at once 0.02311 (the
   groups' sum 0.04064: the costs do not add, the whole is 57% of the parts). The first 18 layers cost 2.4 times what the
   last 24 do, a layer for a layer (13-15 against 25-27: 5.6 times) - an uneven model, unlike the weights' own errors.
+- **A reallocation at the same size** (`ref/alloc_check.py`, the same two chunks, the exact model, the set and the candidate in
+  one pass; 5,947 s): gate/up IQ4_XS on layers 10-15 (the most sensitive groups) paid for by IQ3_XXS gate/up on the 13 least
+  sensitive layers (22, 25-27, 31-33, 37-42; their experts from the IQ3_XXS set): mean KL 0.02712 against the uniform set's
+  0.02313 (+17%), the same top token 94.72% / 94.62%. Predicted from the groups' numbers -7%: as with IQ3_S everywhere, a
+  projection was wrong, and the measurement stands.
