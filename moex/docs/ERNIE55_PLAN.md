@@ -678,8 +678,11 @@ and about the set's recipe. Every number below came from a run that night; the t
   token against 10.3-11.0. The server's end-to-end checks (moex/tools/ernie55/server_checks.py, the public checkout's
   server): 8 of 8 PASS. Since 2026-11-27 both local run configs name it (`strata-ernie55.json.bak-iq3xxs-20261127` beside
   each is the one before). Since 2026-11-27 evening the template and the README's step 3 name it too. The Hugging Face
-  repo carries both sets, one folder each: `IQ3_S-IQ4_XS/` and `IQ3_XXS-IQ4_XS/`. The IQ3_XXS files were moved there
-  server-side, with their hashes unchanged.
+  repo carries both sets, one folder each, first named `IQ3_S-IQ4_XS/` and `IQ3_XXS-IQ4_XS/` (the IQ3_XXS files were
+  moved there server-side, their hashes unchanged). Hugging Face labels a GGUF file by the last quantization name in its
+  path (huggingface.js `parseGGUFQuantLabel`), so its GGUF panel showed the two sets as one IQ4_XS entry of 279 GB. On
+  2026-11-27 the folders were renamed server-side to `IQ4_XS-IQ3_S/` and `IQ4_XS-IQ3_XXS/`, the down type first, the
+  hashes again unchanged.
 - **Which layers the output feels** (`ref/layer_sensitivity.py`: the reference model on two held-out chunks of 2,048 tokens -
   this repository's docs and wiki text, 2,046 positions scored - in 16 variants run at once: exact, one group of three MoE
   layers at a time with the IQ3_S / IQ4_XS set's experts, all layers; 6,193 s): mean KL from the exact model, by group -

@@ -111,13 +111,15 @@ be set before you source it ([Paths](moex/README.md#paths)).
 ```
 
 **3. Download one of the model's two sets** (three files each) and the release's tokenizer. The IQ3_S set (143.5 GB) is
-closer to the release; the IQ3_XXS set (135.1 GB) is a little faster, and more of its experts fit in VRAM and in the
-RAM copy ([QUANTS.md](moex/docs/QUANTS.md)). If Hugging Face asks, accept the release's license on its page and log in
-with `.venv/bin/hf auth login`.
+closer to the release; the IQ3_XXS set (135.1 GB) is a little faster, and more of its experts fit in VRAM and in the RAM
+copy ([QUANTS.md](moex/docs/QUANTS.md)). Each set is a folder whose name gives the experts' down type first:
+`IQ4_XS-IQ3_S/` and `IQ4_XS-IQ3_XXS/`. Before the rename on 2026-11-27 they were `IQ3_S-IQ4_XS/` and `IQ3_XXS-IQ4_XS/`;
+files downloaded earlier can stay where they are, with the run config's `-m` pointing at them. If Hugging Face asks,
+accept the release's license on its page and log in with `.venv/bin/hf auth login`.
 
 ```bash
-.venv/bin/hf download Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF --include "IQ3_S-IQ4_XS/*.gguf" \
-    --local-dir "$STRATA_MODELS/ernie55-gguf"        # or "IQ3_XXS-IQ4_XS/*.gguf" for the other set
+.venv/bin/hf download Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF --include "IQ4_XS-IQ3_S/*.gguf" \
+    --local-dir "$STRATA_MODELS/ernie55-gguf"        # or "IQ4_XS-IQ3_XXS/*.gguf" for the other set
 .venv/bin/hf download baidu/ERNIE-5.5-Flash-Preview-FP8 tokenizer.json \
     --local-dir "$STRATA_MODELS/HF/ERNIE-5.5-Flash-Preview-FP8"
 ```
@@ -131,7 +133,7 @@ with `.venv/bin/hf auth login`.
 
 **5. Make the run config** from its template in [`moex/configs/`](moex/configs/README.md). This fills in the folders; the
 template names the IQ3_S set's first file. For the IQ3_XXS set, change the `-m` path's last two parts to
-`IQ3_XXS-IQ4_XS/ERNIE-5.5-Flash-IQ3XXS-IQ4XS-00001-of-00003.gguf`.
+`IQ4_XS-IQ3_XXS/ERNIE-5.5-Flash-IQ3XXS-IQ4XS-00001-of-00003.gguf`.
 
 ```bash
 sed -e "s#<STRATA_X_ROOT>#$STRATA_X_ROOT#g" -e "s#<STRATA_X_DATA>#$STRATA_X_DATA#g" \

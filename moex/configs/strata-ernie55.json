@@ -3,7 +3,7 @@
   "exe": "<STRATA_X_ROOT>/build-dsv41/strata-x",
   "args": [
     "-m",
-    "<STRATA_MODELS>/ernie55-gguf/IQ3_S-IQ4_XS/ERNIE-5.5-Flash-IQ3S-IQ4XS-00001-of-00003.gguf",
+    "<STRATA_MODELS>/ernie55-gguf/IQ4_XS-IQ3_S/ERNIE-5.5-Flash-IQ3S-IQ4XS-00001-of-00003.gguf",
     "--max-context",
     "1048576",
     "--threads",

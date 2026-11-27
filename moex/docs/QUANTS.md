@@ -111,9 +111,10 @@ Two ways to give it the model:
 - **Tokenizer**: the GGUF carries none; export it from the release:
   `"$STRATA_PYTHON" tools/strata_tokenizer_families.py --hf-json <release>/tokenizer.json --pre ernie55 --roles bos=2,eos=8,unk=0,pad=0 --eog 2,8 --out "$STRATA_X_DATA/tokenizers/ernie55"`.
 - **Run here**: two sets on Hugging Face, one folder each, both with IQ4_XS down and an importance matrix (KLD against
-  the FP8 release; `moex/docs/ERNIE55_PLAN.md` §10):
-  - IQ3_S gate / up, `IQ3_S-IQ4_XS/`: 143.5 GB, KLD 0.0389, the run-config template's set;
-  - IQ3_XXS gate / up, `IQ3_XXS-IQ4_XS/`: 135.1 GB, KLD 0.0629, a little faster, and more of its experts fit in VRAM and
+  the FP8 release; `moex/docs/ERNIE55_PLAN.md` §10). A folder's name gives the down type first: Hugging Face labels a
+  GGUF file by the last quantization name in its path, so the sets show as IQ3_S and IQ3_XXS.
+  - IQ3_S gate / up, `IQ4_XS-IQ3_S/`: 143.5 GB, KLD 0.0389, the run-config template's set;
+  - IQ3_XXS gate / up, `IQ4_XS-IQ3_XXS/`: 135.1 GB, KLD 0.0629, a little faster, and more of its experts fit in VRAM and
     the RAM copy.
 
 ## Qwen3.8-Flash-Next (upstream Strata's engine)
