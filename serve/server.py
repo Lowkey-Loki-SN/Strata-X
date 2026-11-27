@@ -254,6 +254,27 @@ def periodic_tail(text) -> bool:
     return len(tail) == LOOP_TAIL_CHARS and any(tail[p:] == tail[:-p] for p in range(1, LOOP_TAIL_PERIOD + 1))
 
 
+LINE_CYCLE_WINDOW = 256          # moex: the last non-empty lines of the thinking line_cycle looks at
+LINE_CYCLE_LINES = 12            # ... at most this many distinct short lines make up a cycle
+LINE_CYCLE_SHARE = 0.9           # ... and their copies are at least this share of the window
+LINE_CYCLE_CHARS = 65536         # how much of the thinking's end is split into lines (bounds the cost of a look)
+
+
+def line_cycle(text) -> bool:
+    """moex (2026-11-27): a thinking that cycles a few short lines in any order.  Of its last LINE_CYCLE_WINDOW non-empty
+    lines, at least LINE_CYCLE_SHARE are copies of at most LINE_CYCLE_LINES distinct lines, each shorter than the passages'
+    12 words and seen at least three times in the window.  reasoning_repeat_coverage is blind to it: ERNIE-5.5's stall of
+    2026-11-26 cycled six lines of 1-3 words ('OK.', 'Writing.', ...), and once their order changes no 12-word passage
+    repeats (the same lines shuffled measured below its 1.0 for 16K tokens).  A line of 12 words or more is the passages'
+    to catch, in any order; a draft that repeats more than 12 distinct lines (a table's rows) is not a cycle here."""
+    lines = [s for s in (x.strip() for x in text[-LINE_CYCLE_CHARS:].lower().splitlines()) if s]
+    if len(lines) < LINE_CYCLE_WINDOW:
+        return False
+    counts = collections.Counter(lines[-LINE_CYCLE_WINDOW:])
+    cycle = {s: c for s, c in counts.items() if c >= 3 and len(re.findall(r"\w+|[^\w\s]", s)) < 12}
+    return 0 < len(cycle) <= LINE_CYCLE_LINES and sum(cycle.values()) >= LINE_CYCLE_SHARE * LINE_CYCLE_WINDOW
+
+
 def reasoning_repeat_coverage(text):
     """Coverage of recent words by 12-word passages seen at least three times.
 
@@ -4869,8 +4890,9 @@ class Service:
                                     # moex (#46): calls written inside the thinking wait in parser.pending until what
                                     # follows them decides; a thinking that repeats them left nothing else to look at.
                                     # Only a block that repeats one held before it counts (held_repeats)
-                                    repeat_coverage = reasoning_repeat_coverage(
-                                        reasoning_text + held_repeats(parser.pending) if held else reasoning_text)
+                                    looked = reasoning_text + held_repeats(parser.pending) if held else reasoning_text
+                                    # moex (2026-11-27): a cycle of short lines in any order reads as a full repeat
+                                    repeat_coverage = 1.0 if line_cycle(looked) else reasoning_repeat_coverage(looked)
                                     if repeat_coverage >= self.reasoning_loop_coverage:
                                         if self.reasoning_loop_recovery == "stop":
                                             looped = True        # #728: end the reply here, as for a repeated token

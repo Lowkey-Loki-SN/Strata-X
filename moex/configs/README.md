@@ -14,7 +14,7 @@ templates. Each names the engine as the build makes it (`build-dsv41/strata-x`, 
 | `strata-glm.json` | GLM-5.3-Flash | `serve/server.py --config` |
 | `strata-mimo.json` | MiMo-V2.6-Flash | `serve/server.py --config` |
 | `strata-hy4.json` | Hy4-flash | `launch-hy4-flash.sh` |
-| `strata-ernie55.json` | ERNIE-5.5-Flash (our IQ3_XXS / IQ4_XS GGUF set) | `launch-ernie55-flash.sh` |
+| `strata-ernie55.json` | ERNIE-5.5-Flash (our IQ3_S / IQ4_XS GGUF set; for the IQ3_XXS set, its `-m`) | `launch-ernie55-flash.sh` |
 
 The arguments (layer split, expert slots, RAM headroom, threads) were tuned on two RTX 3080 20 GB cards, 125 GB of RAM and a
 20-core Xeon. On other hardware, start from them and leave the layout to the engine where it decides it itself.

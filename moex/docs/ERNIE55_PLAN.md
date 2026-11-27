@@ -625,7 +625,14 @@ and about the set's recipe. Every number below came from a run that night; the t
   loop guard ("wrap", at its look: 2,560 and 3,072 generated tokens on the real loop). A budget of 32,768 was in the
   template for an hour that morning (public b0867eb8) and is gone again. For the record, from that hour: the dev server's
   log of 774 ERNIE-5.5 requests had generated tokens a reply median 376, 99th percentile 4,896, the longest normal one
-  12,782, and only the stalled one past 16,384. A thinking budget
+  12,782, and only the stalled one past 16,384.
+- **A stall in another order** (2026-11-27 afternoon): the guard's passage count catches a cycle only when a 12-word
+  passage repeats - the stall's six short lines in their order, at 1,024 generated tokens on a scripted engine with this
+  family's template and tokenizer, but the same lines shuffled, or shuffled with a new line every 20, ran 16K tokens with
+  no look reading them as a repeat. The look now also reads a cycle of short lines in any order (serve/server.py
+  `line_cycle`: of the thinking's last 256 non-empty lines, 90% copies of at most 12 distinct lines under 12 words): all
+  four shapes end at 1,024 tokens, and the model's answer follows the wrap-up. Number drafts, code, a list, prose and
+  short asides read as work (serve/test_reasoning_loop_recovery.py, LineCycle; the serve suite 899 OK). A thinking budget
   (`reasoning_budget_tokens`) would end such a planning earlier, but it also cuts a long thinking that is not looping: not set.
 
 ### The recipe
@@ -670,7 +677,9 @@ and about the set's recipe. Every number below came from a run that night; the t
   same prompt, back to back): 31.07 / 31.51 / 31.68 T/s against 33.19 / 32.79 / 32.28 (-4.1%), the CPU pool 10.8-11.8 ms a
   token against 10.3-11.0. The server's end-to-end checks (moex/tools/ernie55/server_checks.py, the public checkout's
   server): 8 of 8 PASS. Since 2026-11-27 both local run configs name it (`strata-ernie55.json.bak-iq3xxs-20261127` beside
-  each is the one before); the template still names the IQ3_XXS set (the files the README's step 3 downloads).
+  each is the one before). Since 2026-11-27 evening the template and the README's step 3 name it too. The Hugging Face
+  repo carries both sets, one folder each: `IQ3_S-IQ4_XS/` and `IQ3_XXS-IQ4_XS/`. The IQ3_XXS files were moved there
+  server-side, with their hashes unchanged.
 - **Which layers the output feels** (`ref/layer_sensitivity.py`: the reference model on two held-out chunks of 2,048 tokens -
   this repository's docs and wiki text, 2,046 positions scored - in 16 variants run at once: exact, one group of three MoE
   layers at a time with the IQ3_S / IQ4_XS set's experts, all layers; 6,193 s): mean KL from the exact model, by group -
@@ -683,3 +692,22 @@ and about the set's recipe. Every number below came from a run that night; the t
   sensitive layers (22, 25-27, 31-33, 37-42; their experts from the IQ3_XXS set): mean KL 0.02712 against the uniform set's
   0.02313 (+17%), the same top token 94.72% / 94.62%. Predicted from the groups' numbers -7%: as with IQ3_S everywhere, a
   projection was wrong, and the measurement stands.
+- **Its two halves apart** (the same pass, with checkpoints every 4 layers - two power outages that day; 2,046 positions):
+  the uniform set 0.02313 (94.62%); layers 10-15 at IQ4_XS gate/up alone, +2.6 GB, 0.02144 (-7.3%, 94.92%); the 13
+  least sensitive at IQ3_XXS gate/up alone, -2.6 GB, 0.02909 (+25.8%, 94.33%). For the same bytes the cheapest downgrade
+  costs ~3.5 times what the best-placed upgrade gains - the most favourable pair the sensitivity profile allows - so no
+  reallocation of gate/up bits between layers at the set's size beats the uniform set; the two halves add to about the
+  combined +17%. The upgrade alone is a size step, not a free one: with experts of two sizes the engine sizes every
+  expert slot for the larger (6.68 MB against 5.83), ~13% fewer experts in VRAM, and the RAM copy at the 20 GiB headroom no
+  longer holds every expert outside VRAM (estimated from the slot rule and the IQ3_S / IQ4_XS set's load, not built). The
+  IQ3_S / IQ4_XS set stays the run configs' set.
+- **The upgrade built and measured** (2026-11-27 afternoon; the IQ3_XXS set deleted for the room, at the user's word):
+  `ERNIE-5.5-Flash-IQ3S-IQ4XS-L10-15-IQ4XS-0000N-of-00004.gguf`, 146.13 GB (`--types gu=iq3_s --types d=iq4_xs --types
+  gu=iq4_xs:10-15 --reuse <the IQ3_S / IQ4_XS set>`: 12 tensors made, 1,504 copied, 1,012 s). On the KLD yardstick 0.0370 +-
+  0.0012 against 0.0389 (-4.7%), the same top token 95.33% / 95.07%. Its load at the same headroom: 3,951 experts in VRAM
+  against 4,532 (slots sized for its 6.68 MB experts), the complement 97.35 GiB does not fit the RAM copy (95.07 GiB) -
+  2.5-2.9 GiB read from the GGUF when needed, no lend region. Decode, back to back (512 greedy tokens x 3 after a warm-up):
+  28.79 / 29.28 / 29.86 T/s against 32.04 / 31.68 / 31.47 (-7.6%), the CPU pool 12.8-13.8 ms a token against 10.8-11.5
+  (the slot cap alone, simulated on the IQ3_S / IQ4_XS set with STRATA_X_STAGE_SLOTS, had cost 2.2%: the larger experts and
+  the spill add the rest). 5% nearer the reference for 7.6% of decode and the RAM's margin: not better on this box. The
+  IQ3_S / IQ4_XS set stays the run configs' set; the upgrade's files are kept for the user's choice.

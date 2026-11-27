@@ -65,6 +65,8 @@ def main() -> int:
     ap.add_argument("--tool", default=_os.path.join(_REPO, "build-dsv41-dev", "ernie55_expert_dq"))
     ap.add_argument("--conv", default=_os.path.join(_REPO, "build-dsv41-dev", "convert_gguf_ernie55"))
     ap.add_argument("--threads", type=int, default=0)
+    ap.add_argument("--state", default="", help="the variants' streams every 4 layers here (a resumable run)")
+    ap.add_argument("--resume", action="store_true", help="continue from --state")
     a = ap.parse_args()
     if a.threads:
         torch.set_num_threads(a.threads)
@@ -104,9 +106,17 @@ def main() -> int:
     C, T = len(chunks), a.len
     pos = torch.arange(T)
     t0 = time.time()
+    state = pathlib.Path(a.state) if a.state else None
     with torch.inference_mode():
-        R = {"exact": torch.stack([m.embed(ch) for ch in chunks])}
-        for il in range(c.n_layer):
+        first = 0
+        if state is not None and a.resume and state.exists():   # the variants' streams after layer `next` - 1
+            st = torch.load(state)
+            R, first = st["R"], st["next"]
+            assert all(t.shape[:2] == (C, T) for t in R.values()), "the state is of other chunks"
+            print(f"resuming at layer {first} with {sorted(R)} live", flush=True)
+        else:
+            R = {"exact": torch.stack([m.embed(ch) for ch in chunks])}
+        for il in range(first, c.n_layer):
             t1 = time.time()
             for v in list(R):
                 for ci in range(C):
@@ -129,6 +139,9 @@ def main() -> int:
                     R[name] = m.ffn_half(il, R[name].reshape(-1, c.hc, c.hidden)).view(C, T, c.hc, c.hidden)
             m.expert_src = None
             m.clear()
+            if state is not None and ((il + 1) % 4 == 0 or il + 1 == c.n_layer):   # (written beside, then renamed)
+                torch.save({"R": R, "next": il + 1}, str(state) + ".tmp")
+                pathlib.Path(str(state) + ".tmp").replace(state)
             here = [n for n, (_, d) in cands.items() if il in d]
             print(f"layer {il}: {time.time() - t1:.0f} s{(' (differs here: ' + ', '.join(here) + ')') if here else ''}", flush=True)
         fr = T // 2
@@ -149,6 +162,8 @@ def main() -> int:
         print(f"  {name}: differs from the set at layers {d}")
     for v, (k, s) in out.items():
         print(f"  {v:5s} mean KL {k / n:.5f}  same top {100 * s / n:.2f}%")
+    if state is not None:
+        state.unlink(missing_ok=True)   # (the result is out: nothing to resume)
     return 0
 
 

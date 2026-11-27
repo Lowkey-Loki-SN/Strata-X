@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 from serve.server import (Service, ByteTokenizer, MockEngine, HIGH_EFFORT,
-                          reasoning_repeat_coverage, focused_recovery_prompt, held_repeats, periodic_tail)
+                          reasoning_repeat_coverage, focused_recovery_prompt, held_repeats, periodic_tail, line_cycle)
 
 
 class Tokenizer(ByteTokenizer):
@@ -501,6 +501,60 @@ def number_drafts(seed, n=12, rows=24):
                    f". Weights: {weights}. Checking the sums and the order of draft {k + 1} against the totals.\n")
     return "".join(out)
 
+
+
+STALL = ["Final.", "I'll produce.", "Let me write.", "OK.", "I'll output.", "Writing."]
+
+
+def shuffled_stall(n, seed=7, new_every=0):
+    """moex: a thinking that cycles six short lines in a random order (ERNIE-5.5's stall of 2026-11-26, shuffled), with a
+    line of its own every `new_every` lines when given"""
+    r = random.Random(seed)
+    return "\n".join((f"Step {i} checked." if new_every and i % new_every == 0 else r.choice(STALL)) for i in range(1, n + 1))
+
+
+class LineCycle(unittest.TestCase):
+    """moex (2026-11-27): a cycle of short lines in any order, which no 12-word passage repeats once the order changes."""
+
+    def test_shuffled_short_lines(self):
+        text = shuffled_stall(3000)
+        self.assertLess(reasoning_repeat_coverage(text), 1.0)        # the passages' look is blind to it
+        self.assertTrue(line_cycle(text))
+
+    def test_shuffled_with_a_new_line_every_20(self):
+        self.assertTrue(line_cycle(shuffled_stall(3000, new_every=20)))
+
+    def test_work_is_not_a_cycle(self):
+        code = "".join(f"def handler_{i}(state):\n    if state.flag_{i}:\n        return {i}\n    return None\n\n" for i in range(200))
+        listing = "\n".join(f"- item {i}: check the {['input', 'output', 'cache'][i % 3]} path for case {i}" for i in range(400))
+        prose = " ".join(f"Sentence {i} explains a different step of the plan." for i in range(800))
+        hmm = "\n".join(("Hmm." if i % 3 == 0 else f"The value at step {i} is {i * i}.") for i in range(600))
+        for name, text in (("number drafts", number_drafts(1)), ("number drafts, 24 drafts", number_drafts(2, n=24)),
+                           ("code", code), ("a list", listing), ("prose", prose), ("short asides", hmm)):
+            with self.subTest(name):
+                self.assertFalse(line_cycle(text))
+
+    def test_long_lines_are_the_passages_to_catch(self):
+        long = ["This line is long enough to hold a whole passage of twelve words or more, so the passage look sees it.",
+                "Another line of more than twelve words that the passages count on their own when it repeats."]
+        r = random.Random(3)
+        text = "\n".join(r.choice(long) for _ in range(600))
+        self.assertFalse(line_cycle(text))
+        self.assertGreaterEqual(reasoning_repeat_coverage(text), 0.99)
+
+    def test_the_guard_wraps_a_shuffled_cycle(self):
+        tok = Tokenizer()
+        ids = tok.encode('<|im_start|>system\n' + HIGH_EFFORT + '<|im_end|>\n<|im_start|>user\nTask<|im_end|>\n'
+                         '<|im_start|>assistant\n<think>\n', parse_special=True)
+        engine = RecordingEngine(tok, [shuffled_stall(4000), 'The answer.'])
+        service = Service(engine, tok, None)
+        service.reasoning_loop_recovery = "wrap"
+        with contextlib.redirect_stdout(io.StringIO()):
+            events = list(service.run(ids, True, [], 100000, {}, threading.Event()))
+        self.assertEqual(len(engine.calls), 2)
+        self.assertEqual(events[-1][1]['reasoning_recoveries'], 1)
+        self.assertEqual(''.join(e.text or '' for k, e in events if k == 'event' and e.kind == 'content'), 'The answer.')
+        self.assertLess(events[-1][1]['completion_tokens'], 8000)    # at the first look past 256 lines, not the end
 
 class ReasoningLoopCoverage(unittest.TestCase):
     """moex (DSV41_PLAN §60): "reasoning_loop_coverage", the share of repeats that ends the thinking (0.25 by default).  The

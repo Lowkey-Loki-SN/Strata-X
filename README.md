@@ -23,7 +23,7 @@ engine, get a model's files and make its run config, as below.
 | DeepSeek-V4.1-Flash | the release's MXFP4 experts; Unsloth's UD-Q2_K_XL, UD-IQ3_XXS and UD-IQ1_M experts | 1M | yes | none |
 | MiMo-V2.6-Flash | AesSedai's BPW3.0, an SX-124G set | 256K | yes | none |
 | Hy4-flash | [AngelSlim's](https://huggingface.co/AngelSlim/Hy4-flash-GGUF) Q4_K_M | 1M | yes | DFly2 |
-| ERNIE-5.5-Flash | the set this repo's converter made ([on Hugging Face](https://huggingface.co/Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF)) | 1M | no | none |
+| ERNIE-5.5-Flash | the two sets this repo's converter made, IQ3_S and IQ3_XXS experts ([on Hugging Face](https://huggingface.co/Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF)) | 1M | no | none |
 
 The context a run config sets is not the length each model was tested to: the notes say how far each was run. A drafter
 guesses a few tokens that the model then checks together; it pays where the guesses are often right. Other files can load
@@ -47,6 +47,7 @@ not measured. A token is roughly ¾ of an English word.
 
 | Model, files | Writes an answer | Reads a prompt | Measured |
 | --- | ---: | ---: | --- |
+| ERNIE-5.5-Flash, the IQ3_S / IQ4_XS set | 31.1-31.7 tokens/s ³ | not measured ³ | 2026-11-27 |
 | ERNIE-5.5-Flash, the IQ3_XXS / IQ4_XS set | 32.8 tokens/s | 591 tokens/s (20,582 tokens) | 2026-11-25 |
 | Hy4-flash, AngelSlim's Q4_K_M, DFly2, 250K tokens deep | 22.9-25.5 tokens/s | 416 tokens/s (217,741 tokens) | 2026-11-19 |
 | DeepSeek-V4.1-Flash, Unsloth's UD-Q2_K_XL experts | 21.2 tokens/s | ~350 tokens/s (~16K tokens) ¹ | 2026-11-10 |
@@ -64,9 +65,13 @@ the SSD and 4,287 from its RAM cache, and the drive read 220 GB over the whole t
 requests the drive's slow mode did not hit (those it hit ran at 2.4-4.1 tokens/s). Over two 12-hour days, the drive read
 ~150 MB per decoded token with this set, prompts included.
 
+³ The engine's own benchmark at the run config's settings, not through the server: 512 greedy tokens after a 256-token
+warm-up, one prompt, three runs back to back. The IQ3_XXS / IQ4_XS set read 32.3-33.2 tokens/s the same way, the same
+night; its row is through the server. Prompt reading was not measured for the IQ3_S set.
+
 The prompts, their lengths and the runs differ from row to row; the Hy4-flash row is a 250K-token conversation through
 the server at its run config's sampling, the others shorter prompts. Each number, with how it was measured, is in the
-notes: [ERNIE55_PLAN.md](moex/docs/ERNIE55_PLAN.md) §8, [HY4_PORT.md](moex/docs/HY4_PORT.md),
+notes: [ERNIE55_PLAN.md](moex/docs/ERNIE55_PLAN.md) §8 and §10, [HY4_PORT.md](moex/docs/HY4_PORT.md),
 [DSV41_PLAN.md](moex/docs/DSV41_PLAN.md) §72-§76, [PORT_AUDIT_ALL.md](moex/docs/PORT_AUDIT_ALL.md) §5 and
 [MXFP4.md](moex/docs/MXFP4.md).
 
@@ -105,12 +110,14 @@ be set before you source it ([Paths](moex/README.md#paths)).
 . moex/env.sh
 ```
 
-**3. Download the model** (three files, 135 GB) and the release's tokenizer. If Hugging Face asks, accept the release's
-license on its page and log in with `.venv/bin/hf auth login`.
+**3. Download one of the model's two sets** (three files each) and the release's tokenizer. The IQ3_S set (143.5 GB) is
+closer to the release; the IQ3_XXS set (135.1 GB) is a little faster, and more of its experts fit in VRAM and in the
+RAM copy ([QUANTS.md](moex/docs/QUANTS.md)). If Hugging Face asks, accept the release's license on its page and log in
+with `.venv/bin/hf auth login`.
 
 ```bash
-.venv/bin/hf download Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF --include "*.gguf" \
-    --local-dir "$STRATA_MODELS/ernie55-gguf"
+.venv/bin/hf download Lowkey-Loki/Ernie-5.5-Flash-Preview-Custom-IQ4_XS-GGUF --include "IQ3_S-IQ4_XS/*.gguf" \
+    --local-dir "$STRATA_MODELS/ernie55-gguf"        # or "IQ3_XXS-IQ4_XS/*.gguf" for the other set
 .venv/bin/hf download baidu/ERNIE-5.5-Flash-Preview-FP8 tokenizer.json \
     --local-dir "$STRATA_MODELS/HF/ERNIE-5.5-Flash-Preview-FP8"
 ```
@@ -123,7 +130,8 @@ license on its page and log in with `.venv/bin/hf auth login`.
 ```
 
 **5. Make the run config** from its template in [`moex/configs/`](moex/configs/README.md). This fills in the folders; the
-template already names the files of step 3.
+template names the IQ3_S set's first file. For the IQ3_XXS set, change the `-m` path's last two parts to
+`IQ3_XXS-IQ4_XS/ERNIE-5.5-Flash-IQ3XXS-IQ4XS-00001-of-00003.gguf`.
 
 ```bash
 sed -e "s#<STRATA_X_ROOT>#$STRATA_X_ROOT#g" -e "s#<STRATA_X_DATA>#$STRATA_X_DATA#g" \

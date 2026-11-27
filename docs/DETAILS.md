@@ -820,6 +820,13 @@ print(r.choices[0].message.content)
   from its own tokens, the request's tools): wrapped up at 2,560 and 3,072 generated tokens in two runs, and the model went
   on with its task (a tool call), where the original reply had run 41,661 tokens. Like the other modes it is a policy, not
   a fix of the model: the answer comes from a thinking that had stalled.
+  moex (2026-11-27): the look also reads a cycle of short lines in any order (`line_cycle`): of the thinking's last 256
+  non-empty lines, at least 90% copies of at most 12 distinct lines shorter than 12 words, each seen three times or more,
+  count as a full repeat. The passages' count was blind to it - the same six one-to-three-word lines as ERNIE-5.5's stall,
+  shuffled, stayed below coverage 1.0 for 16K tokens (with a new line every 20, too); a line of 12 words or more is the
+  passages' to catch, and more than 12 distinct repeated lines (a redrafted table) is not a cycle here. Checked with a
+  scripted engine: the shuffled cycles end at the first look past 256 lines (1,024 tokens on ERNIE-5.5's tokenizer), and
+  number drafts, code, a list, prose and short asides do not trip it.
 - **Repeated answers (moex, opt-in, DSV41_BACKLOG #46).** The look above reads only the reasoning; an answer that repeats
   itself ran on to `max_tokens` (with none, the rest of the context). `"answer_loop_recovery": "stop"` in
   `strata-<model>.json` takes the same look at the answer every 512 tokens, at a stricter 50% of the last 2,000 words
