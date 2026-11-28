@@ -1241,7 +1241,7 @@ struct Engine::Impl {
     bool hy4_mpos_set(std::string& err);
     bool hy_mpos_live = false;          ///< the device tables hold a picture's positions (a header other than {0, 0, 0})
     std::vector<int32_t> h_mpos;        ///< the host copy (header as int32 pairs, then the triples)
-    bool load_engram_hy4(std::string& err);   ///< after bind_layers: the table mapped (no-op without an Engram)
+    bool load_engram_hy4(std::string& err);   ///< after bind_layers: the table mapped (no-op without an Engram, or not Hy4)
     /// The Engram's table (per_layer_token_embd, FP8 E4M3 rows of `dim` bytes in the GGUF), the compressed id of every
     /// position read so far, and the staging of a window's rows ([slot j][cap][cols][dim]) and validity ([cap][cols])
     struct Hy4Eg {
@@ -1635,7 +1635,7 @@ struct Engine::Impl {
         std::vector<uint64_t> cnt;   ///< [layer * n_expert + e]
     };
     std::unique_ptr<Imx> imx;
-    bool load_engram(std::string& err);               ///< after bind_layers: the tables mapped, qk uploaded (no-op without)
+    bool load_engram(std::string& err);               ///< after bind_layers: the tables mapped, qk uploaded (no-op without, or not V4.1)
     void eg_preload_start();                          ///< moex (§18): the scale tables' pre-read, after the load (opt-in)
     int eg_index(int64_t il) const;                    ///< il's engram slot, or -1
     void eg_note(const int32_t* toks, int64_t pos0, int64_t n);   ///< positions pos0 .. pos0 + n - 1 read these tokens

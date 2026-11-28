@@ -168,7 +168,7 @@ Per token, `R` = 4 streams of 3072 (all four the token's embedding row, Q8_0 deq
 - **DSpark** is DeepSeek-V4.1's drafter: nothing of it applies to Hy4-flash.
 - **Images**: the release's vision tower (`vit.*`: SigLIP2-So400m adapted, 27 layers, hidden 1,152, 16 heads, patch 16, an
   MLP projector `vit.perceive`) is in AngelSlim/Hy4-flash-GGUF as `mmproj-Hy4-flash-bf16.gguf` (1,044,397,440 bytes, added
-  at commit ecd803c8, 2026-11-18 15:32 UTC; the Q4_K_M files there keep e018c884's SHA-256s). llama.cpp PR #32517 has the
+  at commit ecd803c8 on 2026-11-18; the Q4_K_M files there keep e018c884's SHA-256s). llama.cpp PR #32517 has the
   encoder (tools/mtmd/models/hy-v4-flash.cpp); vLLM's vision.py / mrope.py / mm_preprocess.py and the Rust processor
   (hy_v4_vl/processor.rs) give the preprocessing and the image rows' M-RoPE positions. Built 2026-11-18 (Status, "images").
 - Already on: Strata's prompt lookup (`suffix_draft` 3, windows up to 6) drafts from repeats of the context, lossless, its
@@ -461,14 +461,15 @@ Per token, `R` = 4 streams of 3072 (all four the token's embedding row, Q8_0 deq
     hits) - about the short-context rate. The answer summarized the code correctly.
   - Turns 2 and 3 (3,828 new tokens, then 26; the 470,948-token prefix reused): read in 45.4 s and 1.4 s; decode 10.3 and 10.9
     tok/s, and a fresh short conversation on the same server afterwards 9.4-12.2 - at 54-58% hits, the answers correct.
-  - Why: **the drive.** The model's NVMe (2 TB, 99% full) had a slow spell then - sysstat's 10-minute rows, 02:40-02:50: 4,011
-    requests a second at an average wait of 75 ms and a queue of 301 (02:00-02:30: 1.5-5.1 ms). Every prompt token takes 64
-    Engram rows and a decode token 64 more, from a 63 GB table mostly outside the page cache: a slow drive stalls a chunk's
-    gathering (a 40K read in the spell: 30-60 s between chunks, both GPUs done and waiting) and every decode window. The same
-    three turns at 250K with the drive healthy (diagnostics on, the engine's breakdown): 217,741 tokens read in 523 s (416
-    tok/s; 32,768 reused), then decode 25.5 / 22.9 / 24.6 tok/s, the follow-up's 3,627 tokens in 14.7 s - a token 12.1-13.4 ms
-    waiting for the routing, 19.4-22.2 ms in the CPU pool (62-64 GB/s), 7.5 ms the rest. The same cold 16K read gave 28 s
-    and, minutes later in a spell, 104-112 s (the gathering's own timing: a step 1.4-2.2 s when healthy).
+  - Why: **the drive.** The model's NVMe (2 TB, 99% full) had a slow spell then - sysstat's 10-minute rows, one in the
+    spell: 4,011 requests a second at an average wait of 75 ms and a queue of 301 (an earlier half hour: 1.5-5.1 ms).
+    Every prompt token takes 64 Engram rows and a decode token 64 more, from a 63 GB table mostly outside the page
+    cache: a slow drive stalls a chunk's gathering (a 40K read in the spell: 30-60 s between chunks, both GPUs done and
+    waiting) and every decode window. The same three turns at 250K with the drive healthy (diagnostics on, the engine's
+    breakdown): 217,741 tokens read in 523 s (416 tok/s; 32,768 reused), then decode 25.5 / 22.9 / 24.6 tok/s, the
+    follow-up's 3,627 tokens in 14.7 s - a token 12.1-13.4 ms waiting for the routing, 19.4-22.2 ms in the CPU pool
+    (62-64 GB/s), 7.5 ms the rest. The same cold 16K read gave 28 s and, minutes later in a spell, 104-112 s (the
+    gathering's own timing: a step 1.4-2.2 s when healthy).
   - **The Engram row cache** (Hy4Eg::RowCache; STRATA_HY4_EG_CACHE_MIB, default 2048, 0 off): the rows read lately, row by row
     (4-way set-associative, 4,096 striped locks), in front of the table. The page cache keeps a 4 KB page for each 96-byte row
     the hashed order scatters - ~1 useful row a page - so a long session's ~15M rows did not fit its ~24 GB and repeats came
@@ -625,7 +626,7 @@ Per token, `R` = 4 streams of 3072 (all four the token's embedding row, Q8_0 deq
 - The server (serve/families.py `hy4`, serve/family_parsers.py `Hy4Syntax`, serve/family_templates/hy4.jinja,
   tools/strata_tokenizer_families.py `hy_v4` = joyai-llm's regexes): the exported tokenizer gives llama.cpp's ids; a reply
   with thinking, text and two calls parses into its reasoning, its content and the two calls with their schema's types.
-  - **The template** (2026-11-18, late): the release's (tencent/Hy4-flash d88c9dfd chat_template.jinja), its tag suffix the
+  - **The template** (2026-11-18): the release's (tencent/Hy4-flash d88c9dfd chat_template.jinja), its tag suffix the
     GGUF vocabulary's - `:6124c78e` for `:opensource`, the same ids (all 24 suffixed special tokens of the release's
     tokenizer.json, the think tags among them). It replaced AngelSlim's GGUF template, which is the release's but for one
     thing: it also takes `reasoning_effort: low`, which the release's refuses ("should be no_think/high/max") and its model
@@ -641,3 +642,8 @@ Per token, `R` = 4 streams of 3072 (all four the token's embedding row, Q8_0 deq
   the image encoder's fused attention on top of f20342cc (KV on demand on top of e51e7df5); f20342cc, e51e7df5 (the register-tiled indexer, k_b in one launch, the Engram row cache and the later
   stages' rows gathered ahead, the decode's per-head projections 4 rows a warp, the routers' F32 preload), 9569a63f (the tile
   scores kernel, coupled drafts, the reset fix), 5a0fde92, d471bddf and a75814f8 kept beside it).
+
+2026-11-28: load_engram_hy4 is Hy4-flash's only. Since the port it ran for every model with an Engram and read the -m
+set's own table: DeepSeek-V4.1 did not start on any build since 2026-11-18 from a set whose own table is any type but 43
+or Q8_0 (type 67 in the sets here; IQ4_NL, Q5_K, Q6_K or BF16 in others), nor from a pack, and an own type-43 (or Q8_0)
+table started with Hy4's row gathering running unread (DSV41_PLAN §77).

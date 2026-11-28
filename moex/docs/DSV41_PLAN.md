@@ -10,9 +10,9 @@ deep checkpoints, the drive's slow mode - read disturb, fixed by `refresh_pack.p
 stop between layers (in the config) and layer-major prompt reads (exact, the cold 44K read 166.9 -> 125.3 s; off again after
 a cold 84K read from a reboot stalled behind it).
 DSV41_BACKLOG.md lists what is left. The history below is kept as it was written (the maintainer's quoted words
-paraphrased and a few local details generalized on 2026-11-28).
+paraphrased, a few local details generalized and the times of day dropped on 2026-11-28).
 
-**Status (2026-10-17 18:10): plan final; phase 0 passed all three gates (§9); phase 1 conversion running.**
+**Status (2026-10-17): plan final; phase 0 passed all three gates (§9); phase 1 conversion running.**
 - The release is streamed from Hugging Face straight into the native pack by `moex/tools/dsv41/convert_pack.py`,
   with no raw copy kept: each shard is checked against its SHA-256, and the run can be resumed.
   - Speed: ~20 MB/s, about 7 h for 502 GB.
@@ -20,7 +20,7 @@ paraphrased and a few local details generalized on 2026-11-28).
 - Where the pack goes:
   - experts and engram (498.8 GB) in `~/AI/Models/dsv41-1017/native` on ext4, leaving ~21 GB free on /;
   - the dense safetensors (~11.5 GB, read by the reference and `write_dense_gguf.py`) in
-    `~/AI/Models/dsv41-1017/dense`. They were on an NTFS partition (through FUSE) until 2026-10-18 evening, when the
+    `~/AI/Models/dsv41-1017/dense`. They were on an NTFS partition (through FUSE) until 2026-10-18, when the
     user moved them there so that the partition's drive could be repartitioned; all 48 files' sizes and tensor counts
     were checked after the move, and `native/manifest.json` now points there (the old copy is
     `manifest.json.bak-2026-10-18`).
@@ -29,7 +29,7 @@ paraphrased and a few local details generalized on 2026-11-28).
 - Shards 3 (layer 0) and 43 (head) were checked with `verify_pack.py` against fresh range reads: records 0, 68 and
   383 byte-identical, all 384 CRCs good, dense tensors identical.
 - The engine port of phase 1 has not started.
-- **2026-10-18 10:26: restarted after a shutdown.**
+- **2026-10-18: restarted after a shutdown.**
   - 34 of 48 shards were done (224 GB). `verify_pack.py --local` checked them: all 11,904 expert records match
     their crc32, and every dense file has the right size.
   - `~/AI/Models/dsv41-1017/resume.sh` runs the 12 small shards left, then the rest.
@@ -576,8 +576,8 @@ the native pack, one layer at a time.
 - The candidate filter (2,048 blocks of 8) only cuts above 16,384 positions, which is too long for a CPU reference
   run, so it gets a unit-level check instead.
 
-**The engine port, first pass written (2026-10-18 afternoon; built, not yet run on a GPU).** The user's GLM server
-held both GPUs all afternoon, so nothing below has run on a GPU yet. Everything is built in a separate
+**The engine port, first pass written (2026-10-18; built, not yet run on a GPU).** The user's GLM server
+held both GPUs throughout, so nothing below has run on a GPU yet. Everything is built in a separate
 `build-dsv41/` so the live `build/strata-glm` stays untouched.
 - `src/glm/dsv41_kernels.cu` holds the new kernels:
   - FP8 and FP4 rounding of cached values;
@@ -613,7 +613,7 @@ held both GPUs all afternoon, so nothing below has run on a GPU yet. Everything 
 - Pending GPU time: the two parity tests (V4's must still pass unchanged), then the oracle check, then decode-window
   KL against the fp32 baseline (`ref-runs/noeng-128-fp32`, done in 45 min).
 
-**First GPU run (2026-10-18 evening, `build-dsv41/`, one RTX 3080 unless noted; native MXFP4 experts read in place; no
+**First GPU run (2026-10-18, `build-dsv41/`, one RTX 3080 unless noted; native MXFP4 experts read in place; no
 engram on either side, since its tables are still downloading).** Logs are in `~/AI/Models/dsv41-1017/ref-runs/engine-checks/`.
 - **S1, kernel parity:**
   - `dsv41_kernels_parity`: every check passes, every negative control fails as it should. The roundings, row
@@ -655,8 +655,8 @@ engram on either side, since its tables are still downloading).** Logs are in `~
 - **Generation:** coherent English on a natural prompt through both read paths. Greedy repeats within ~40 tokens on
   a bare (non-chat) prompt.
 
-**Speed work on the native pack (2026-10-18 evening).** Two GPUs split at layer 20, the DSpark drafter loaded, no
-engram yet (its second table landed at 17:31). Logs, routing traces and profiles are in
+**Speed work on the native pack (2026-10-18).** Two GPUs split at layer 20, the DSpark drafter loaded, no
+engram yet (its second table landed that day). Logs, routing traces and profiles are in
 `~/AI/Models/dsv41-1017/ref-runs/engine-checks/` and `~/AI/Models/dsv41-1017/profiles/`.
 - **The SSD tier.** Experts in neither VRAM nor RAM are read with O_DIRECT into pinned slots (`expert_io.hpp`: 12
   readers, 4 MiB pieces, demand reads before read-ahead), never through the page cache.
@@ -743,14 +743,14 @@ engram yet (its second table landed at 17:31). Logs, routing traces and profiles
   were used, but each guess takes a cache slot and evicts a record the decode wanted later. It is now opt-in
   (`STRATA_DSV41_AHEAD=1`); the default is off.
 
-**The goal from here (the user, 2026-10-18 evening):**
+**The goal from here (the user, 2026-10-18):**
 1. Run the best quant this box can run: the best balance of quality and speed.
 2. Run it at the highest prefill and decode speeds this box allows.
 3. Make the theoretical speed of that quant match the measured speed.
 
 The user added a rule: no test that does not change a decision toward these goals.
 
-**Toward it (2026-10-18 evening):**
+**Toward it (2026-10-18):**
 - **The engram is in.** The engine's GGUF is now `~/AI/Models/dsv41-1017/dsv41-1017-dense-q8_0-dsp-eg.gguf` (dense
   Q8_0, the DSpark drafter, the engram projections; 10.56 GB, 94 s to write).
   - 96 greedy tokens on the coding prompt are coherent with it, and with it off (`STRATA_DSV41_NO_ENGRAM=1`).
@@ -795,7 +795,7 @@ The user added a rule: no test that does not change a decision toward these goal
   - On the 207 GB mix the model gives 4,771 slots instead of 4,236, and 6.73 → 7.22 tok/s.
   - VRAM slots sized per GPU would add ~2% more (GPU 1 sized for Q2_K, layer 32 then off VRAM). It touches ~25
     places in the tier code, so it was not done.
-- **S4, the engram: passed** (19:13, the 12-step oracle with the engram on both sides). Layers 1 and 14's engram rows are
+- **S4, the engram: passed** (the 12-step oracle with the engram on both sides). Layers 1 and 14's engram rows are
   bitwise equal; the projection and the gated output are within 5e-3 and 1.6e-3, as every other op. Every routed expert set
   and index selection is equal at every step.
 - **Bounded replay is written** (`replay_init`, `Stage::replay_shift`; on for V4.1, `STRATA_DSV41_REPLAY=0` for the full
@@ -844,7 +844,7 @@ The user added a rule: no test that does not change a decision toward these goal
     - Its box sends RAM hits over PCIe to the GPU, so VRAM is what pays there. Here the CPU computes RAM and cache hits
       at ~0.3 ms each and an SSD read costs ~5-7 ms, so only the SSD penalty is used.
 
-**The 207 GB pack, measured (2026-10-18, 20:32-20:51; the engram on; two GPUs split at 20).**
+**The 207 GB pack, measured (2026-10-18; the engram on; two GPUs split at 20).**
 - **Built** in 78 min. Q3_K layers took ~60 s each; Q2_K layers ~165-195 s each, because ggml's Q2_K imatrix search is
   ~3x the cost of Q3_K's.
 - **Quality against native** (wikitext-2 test, 16 chunks of 512, 4,080 scored tokens; the native rows written by the same
@@ -902,7 +902,7 @@ The user added a rule: no test that does not change a decision toward these goal
 
   - The quality differences are within the engine's own run-to-run floor (KLD 0.010). The KLD run itself took 418 s
     instead of 531 s.
-- **The pack, layers 33-39 to Q3_K too** (21:57; Q3_K on 0-19 + 32-39, Q2_K on 20-31; 217.0 GB). Quality against native
+- **The pack, layers 33-39 to Q3_K too** (Q3_K on 0-19 + 32-39, Q2_K on 20-31; 217.0 GB). Quality against native
   (the same yardstick):
 
 | | the 207 GB pack | **the 217 GB pack** | DSV4 Q3_K pass mark |
@@ -913,7 +913,7 @@ The user added a rule: no test that does not change a decision toward these goal
 | median KLD / 99th percentile | 0.0018 / 2.22 | 0.0011 / 2.15 | - / 1.90 |
 
   - It passes on all three; the engine's own floor (0.010) is inside the 0.131.
-- **The DSpark drafter's cost cut** (22:13; `STRATA_DSV41_DSPARK_ROWS=-1` and the Markov head on the device):
+- **The DSpark drafter's cost cut** (`STRATA_DSV41_DSPARK_ROWS=-1` and the Markov head on the device):
   - The Markov head ran gemv_f32_w's block per row (129,280 blocks of 256-element dots) and synced the host once per draft.
     It is now one kernel a step (a warp per vocabulary row, the previous token read where the argmax wrote it) and one sync
     a block.
@@ -963,7 +963,7 @@ The user added a rule: no test that does not change a decision toward these goal
   - So heads_q8_0 alone is ~6-8 ms of a token's ~30 ms of GPU time, the mixers ~2 ms. Written, opt-in for the A/B:
     `STRATA_DSV41_HEADS_MMVQ=1` (wo_a as one native MMVQ per group in decode windows) and `STRATA_DSV41_HC_SPLIT=1` (the
     mixers' rows split 16 ways across blocks, the partial sums reduced in a fixed order). DSV4's path is untouched.
-- **The two GPU opt-ins measured** (22:33-22:36):
+- **The two GPU opt-ins measured**:
   - The kernels alone (`STRATA_GLM_PARITY_ONLY=heads_v41 glm_kernels_parity`, V4.1's shapes; the results agree to
     1.5e-7): wo_a 125 / 167 / 212 µs at 1 / 2 / 3 rows with `heads_q8_0`, 72.5 / 77.4 / 80.7 µs as one native MMVQ per
     group (286 → 492 GB/s at one row); the mixers 17.6-20.7 µs with `gemv_f32_w`, ~10 µs split (two launches).
@@ -1040,7 +1040,7 @@ The user added a rule: no test that does not change a decision toward these goal
     limit, 0 the old ahead-of-routing stream).
   - The refill still reads 167 / 599 records from the SSD after the 2K / 8K prompts (~0.9 / ~3.1 s): the prompt-keep change
     is to serve those from RAM.
-- **An exactness gate that was too strict** (23:08-23:14, KG): the 7,820-token prompt and 64 greedy tokens with the prompt-keep
+- **An exactness gate that was too strict** (KG): the 7,820-token prompt and 64 greedy tokens with the prompt-keep
   change on and off gave the same first 40 tokens, then split at a near-tie (`2619 27297` against `24985`: the same text cut
   into tokens two ways). No slot check failed. The two runs' RAM copies differed (20.6 vs 23.3 GiB: the copy is sized by the
   MemAvailable at load), so the VRAM tier evolved a little differently (285 vs 291 swaps) and a few experts ran on the GPU in
@@ -1061,7 +1061,7 @@ The user added a rule: no test that does not change a decision toward these goal
   - Asynchronous fills took 4.3 ms a token off the host's time between windows (the rest: 8.9 → 4.6 ms) but lifted the
     synchronous fills' cap of 8 SSD-tier swaps a round: the tier swapped ~4 experts a token instead of ~2.4, and the victims
     it dropped were read again (SSD reads 0.9 → 2.2 a token, its wait 4 → 11 ms). Under the old cap: M3.
-- **The prompt path's three changes pass their exactness gate** (KG3, 23:21-23:26): the 7,820-token prompt's top-8 logits with
+- **The prompt path's three changes pass their exactness gate** (KG3): the 7,820-token prompt's top-8 logits with
   prompt keep + the lent experts copied to the SSD cache before lending + the engram rows fetched beside the stream are bitwise
   those with all three off (`5:30.562 372:26.876 671:25.414 ...`). The same cold run (no warm-up, the cache empty):
 
@@ -1071,7 +1071,7 @@ The user added a rule: no test that does not change a decision toward these goal
 | SSD reads | 12,121 | 10,447 |
 | the 956 lent slots' refill | 956 read from the SSD | **956 from the cache** |
 | records the prompt left in the cache | 0 | 3,550 (+ the 956 lent) |
-- **Keeping every prompt read in the cache hurt a warmed cache** (L3, 23:26: K's sequence with `PROMPT_KEEP` at a share of 1):
+- **Keeping every prompt read in the cache hurt a warmed cache** (L3: K's sequence with `PROMPT_KEEP` at a share of 1):
 
 | prompt | gated, no keep (L1 / K) | **keep, share 1 (L3)** | L3 SSD reads / cache hits |
 |---|---|---|---|
@@ -1097,8 +1097,8 @@ The user added a rule: no test that does not change a decision toward these goal
 
   - On by default since (`STRATA_DSV41_ASYNC_FILL=0`: the synchronous fills). A warmed token: 48.7 ms = the CPU pool 25.3 (its
     drain 17.5 at 58 GB/s, the SSD 7) + the GPUs' routing 19.0 + the host's rest 4.4.
-- **Prefill as a server sees it, with the prompt path's changes** (L4, 23:36: K's warm-up and sequence; the stream gate on every
-  chunk, the lent experts kept in the SSD cache, the engram rows beside the stream):
+- **Prefill as a server sees it, with the prompt path's changes** (L4: K's warm-up and sequence; the stream gate on
+  every chunk, the lent experts kept in the SSD cache, the engram rows beside the stream):
 
 | prompt | K (before) | L1 (the gate) | **L4 (all three)** | L4 SSD reads / cache hits | the lent slots' refill |
 |---|---|---|---|---|---|
@@ -1110,7 +1110,7 @@ The user added a rule: no test that does not change a decision toward these goal
 
   - Long prompts: -23% (2K) and -15% (8K) against K. A 200-token prompt was gated already: unchanged.
   - What is left is the drive: 6,388 reads x ~5.2 ms = 33 s of the 2K prompt's 36 s; 7,538 = 39 s of the 8K's 47.5 s.
-- **The server, end to end** (S8, 23:41; `strata-dsv41.json`: the final config - route bias 0.3 in decode, the GPU opt-ins,
+- **The server, end to end** (S8; `strata-dsv41.json`: the final config - route bias 0.3 in decode, the GPU opt-ins,
   plain decode with the engine's prompt-lookup drafts, the stream gate, the lent experts kept, the engram beside the stream;
   a 128K context then - 262,144 in every config since - and a learned expert profile):
 
@@ -1217,10 +1217,11 @@ windows, so the bias applies to both - harsher than a session, where only the ge
 
 **The release's sampling.** DeepSeek-V4.1's card: temperature 1.0, top_p 1.0, no top-k cut; its `generate.py` samples
 softmax(logits / T) over the whole vocabulary (Gumbel-max).
-- The engine sampled at most 64 candidates, and a GEN line without top_k takes the engine's default, 20 - which V4.1's requests
-  did all night on 2026-10-18, after the config's top_k was taken out. top_k 0 now means no cut, and with top_p 1 and min_p 0
-  the engine samples the whole vocabulary: Gumbel-max keyed by (seed, position, token id), so a verify window's rows draw what
-  single steps would given the same logits (a draft's draws are a single step's; its logits are not quite, #36c below). The server sends top_k 0 to the deepseek41 family whenever
+- The engine sampled at most 64 candidates, and a GEN line without top_k takes the engine's default, 20 - which V4.1's
+  requests did on 2026-10-19 (§52), after the config's top_k was taken out. top_k 0 now means no cut,
+  and with top_p 1 and min_p 0 the engine samples the whole vocabulary: Gumbel-max keyed by (seed, position, token id),
+  so a verify window's rows draw what single steps would given the same logits (a draft's draws are a single step's; its
+  logits are not quite, #36c below). The server sends top_k 0 to the deepseek41 family whenever
   a request names no positive top_k (absent, 0, or a client's -1), so V4.1 never reaches the default; the default itself stays
   20 (the user, 2026-10-19), so every other family samples as before.
 - `sampler_parity` (all three sampled paths): the draws' frequencies are softmax(logits / T) (total variation 0.0145 over 204,800
@@ -1483,7 +1484,13 @@ expert profile and read back at the next start, in the background. On a 2,000-to
 cache gave 5,448 records instead of 4,225, but the read took 87.5 s instead of 67.5 s - the refill's own reads (~60 GB)
 compete with the request's, and cold runs of the same prompt spread 67-135 s. Off in the config.
 
-**Tests, tools, logs (#57).** One start line lists every DeepSeek switch set ("DeepSeek switches: DSV41_ROUTE_BIAS=0.3 ..."); a pack's expert profile names its pack (FNV-1a 64 of experts.tsv) and the server starts from a learned profile only on that pack, saying which profile it uses (the first builds took the FNV offset basis with its last digit lost, so the server took their profiles for another pack's and started from the config's - from the restart of 2026-10-20 01:37 on; the engine now writes the standard digest and the server accepts both); `phase1_checks.sh all` skips the dropped engram reference; speed_model's defaults are the 217 GB pack's; the checks behind this section are in `moex/tools/dsv41/checks/`; deepseek41's picture pad runs, its loop guard and `chat_defaults` have CPU tests.
+**Tests, tools, logs (#57).** One start line lists every DeepSeek switch set ("DeepSeek switches:
+DSV41_ROUTE_BIAS=0.3 ..."); a pack's expert profile names its pack (FNV-1a 64 of experts.tsv) and the server starts from
+a learned profile only on that pack, saying which profile it uses (the first builds took the FNV offset basis with its
+last digit lost, so the server took their profiles for another pack's and started from the config's - from the restart
+of 2026-10-20 on; the engine now writes the standard digest and the server accepts both); `phase1_checks.sh all` skips
+the dropped engram reference; speed_model's defaults are the 217 GB pack's; the checks behind this section are in
+`moex/tools/dsv41/checks/`; deepseek41's picture pad runs, its loop guard and `chat_defaults` have CPU tests.
 
 **Not done.** #53 stays open; its first step is in: a request that shares far more of the engine's tokens than it can reuse
 logs where they part ("this prompt shares N tokens with the engine's M but reuses R"), which shows what a client's long
@@ -1491,13 +1498,13 @@ sessions need.
 
 ## 14. The server log of 2026-10-20: the learned profile, deep checkpoints, the engram reader and the drive's slow mode
 
-Read from the engine's statistics lines only, for the run of 2026-10-20 01:37-11:00 (470 requests, conversations up to 178K
-tokens), and from a 1 Hz record of the drive, the memory and the pressure taken beside it (counters only).
+Read from the engine's statistics lines only, for the run of 2026-10-20 (9 h 23 min, 470 requests, conversations up to
+178K tokens), and from a 1 Hz record of the drive, the memory and the pressure taken beside it (counters only).
 
 **The learned profile (#57's digest).** The engine took 1469598103934665603 for FNV-1a's offset basis (the standard
 14695981039346656037 with its last digit lost), so the digest it wrote into a profile's header never matched the server's:
-from the restart of 01:37 the server took the learned profile for another pack's and started from the config's.  Fixed
-(4a3824ea): the engine writes the standard digest, the server accepts both.
+from the restart that began the run the server took the learned profile for another pack's and started from the
+config's.  Fixed (4a3824ea): the engine writes the standard digest, the server accepts both.
 
 **Deep checkpoints (`--prompt-cache-deep`, every family).** In that run 11 requests read 45-163K tokens again from the
 4,731-token system-prompt root: 6,616 s, 42% of the run's prompt time.  In 5 of them the prompt shared 67-142K tokens with
@@ -1562,7 +1569,7 @@ pieces, each read back and compared): the same bytes on new blocks, no free spac
 seconds at a load phase's edge, the next ones at 2.7 GB/s), where the same load had it within 1-2 minutes every time
 before; a load phase reads 2.6-2.8 GB/s.  The engine says when it is back: a prompt read of 10 s or more under 1.2 GB/s
 with the drive 85% busy is the slow mode's, and three within an hour put a line in the log that names the tool.  How often:
-the pack met it after about a day of this use (written 2026-10-18, the first slow short reads 2026-10-20 00:06); the deep
+the pack met it after about a day of this use (written 2026-10-18, the first slow short reads 2026-10-20); the deep
 checkpoints read ~15% fewer bytes in a run like 2026-10-20's (4.7 of its 25.2 TB went to the five re-reads they shorten).
 A refresh writes the pack once (217 GB); the drive's own refresh rewrites the same blocks, a minute at a time in the lulls.
 
@@ -1677,7 +1684,7 @@ tables evicted first, then 512 tokens; one arm each):
 | decode, a cold cache | 4.0 tok/s (191.0 ms a token for the drive, 5.50 reads) | **14.3 tok/s** (23.9 ms, 5.01 reads) |
 
   - The old pack ran in the drive's slow mode (§14): its most-read blocks were worn again - the slow mode was back ~6 hours
-    after the refresh of 2026-10-20 14:46 (the 20:56 run). A freshly written pack reads at full speed until its own
+    after the refresh of 2026-10-20 (a run 6 h 10 min later). A freshly written pack reads at full speed until its own
     blocks wear, so the 2.2x is fresh blocks against worn ones, not the recipe.
   - The recipe's own share: 12.7% fewer bytes from the drive on this prompt (layers 0-20's records, which every chunk of a
     long read streams: 121.2 -> 105.2 GB, -13%); decode the same (the speed model on the route-biased trace: 14.52 / 14.53 tok/s).
@@ -1771,14 +1778,14 @@ read; the chunk loop 219.2-226.7 s):
   650.4 s against 204.5 s without (the drive slow, below; the records waited 522.6 s behind the slowest reads); the n-gram
   reader - no gain.
 
-**The drive during these tests.** The same prompt was read cold ~20 times on 2026-10-21 (the pack written at 16:27, the
-engram pages evicted before each engine) and the drive slowed by ~20:00: the same layer-major config 125.3 s, then 204.5 s
-(2.00 -> 1.23 GB/s, 21 -> 48 ms a request) at 39-43 degrees C - the slow mode of §14, its worn blocks now the test prompt's.
-At 20:16 a read with those pages cached ran at 2.56 GB/s, 13 ms a request; the next cold reads at 39-77 ms.  The desktop
-lags with it (the root filesystem is on the drive: at 161 ms a request every program waits).  The speed numbers above are
-from before; the bit-for-bit checks do not depend on it.
+**The drive during these tests.** The same prompt was read cold ~20 times on 2026-10-21 (the pack written that day, the
+engram pages evicted before each engine) and the drive slowed ~3.5 h after the write: the same layer-major config
+125.3 s, then 204.5 s (2.00 -> 1.23 GB/s, 21 -> 48 ms a request) at 39-43 degrees C - the slow mode of §14, its worn
+blocks now the test prompt's. After that, a read with those pages cached ran at 2.56 GB/s, 13 ms a request; the next
+cold reads at 39-77 ms.  The desktop lags with it (the root filesystem is on the drive: at 161 ms a request every
+program waits).  The speed numbers above are from before; the bit-for-bit checks do not depend on it.
 
-**Off again the same evening (the user, 22:43): `STRATA_DSV41_LAYER_MAJOR` and `STRATA_DSV41_BOUNCE` are out of the config.**
+**Off again the same day (the user): `STRATA_DSV41_LAYER_MAJOR` and `STRATA_DSV41_BOUNCE` are out of the config.**
 After a reboot (an empty page cache) the server read an 84,524-token prompt from 0 for 670 s without one chunk reported -
 the console's "X of Y" never came: layer-major reports only after a whole window - and the desktop was sluggish throughout
 (the load average 14).  No engine log (diagnostics off).  The drive was healthy afterwards (`drivetest.py 90 12 8 2`: 194.5 GB
@@ -1799,10 +1806,10 @@ The goal (the user, 2026-10-21): the speed-ups and no lag - an end to the stalls
 (§14) is the drive's firmware's; the engine decides only how much of the drive's queue is its own while it lasts.
 
 **What the logs and counters showed.**
-- **The 670 s read** (22:42-22:54, the first after the 22:38 reboot, §17): no engine statistics (diagnostics off). Memory
+- **The 670 s read** (the first after the reboot, §17): no engine statistics (diagnostics off). Memory
   and CPU played no part: from the boot on the kernel swapped and reclaimed nothing (`/proc/vmstat`: pswpin, pswpout,
   pgscan, pgsteal, workingset_refault all 0; `/proc/pressure`: memory 0.27 s in all, CPU 18 s).
-- **The two reads after 23:05** (the heartbeat on) met an episode each, 60-70 s, in both read orders: layer-major (38,180
+- **Two later reads** (the heartbeat on) met an episode each, 60-70 s, in both read orders: layer-major (38,180
   tokens) at 4 MB/s and 1,020 ms a request while layer 1 waited for its engram rows; the chunk loop (45,839 tokens - its
   9,495-token chunks did not fit a window of 2 in GPU 0's loan) at 32-45 MB/s and 1,620-2,084 ms while layer 4's records
   streamed. Their normal samples: 9.8-39.4 ms. §17's reading - the engram's reads behind layer-major's queue - was wrong:
@@ -1871,14 +1878,14 @@ pass's readers first waited holding a layer (held at the floor the load never en
 slow samples; the pre-read waited for the prompts' fetches and so never ran beside a long read right after the start.
 
 **In the slow mode the drive served one request at a time.** D's floor got ~1,000 reads a second at 1.0 ms each with one in
-flight - the rate tonight's other episodes gave ~1,000 queued requests at 1,020 ms each. So the floor costs the engine
+flight - the rate the other episodes above gave ~1,000 queued requests at 1,020 ms each. So the floor costs the engine
 nothing there, and another program's read waits for at most one of the engine's. The bound for a drive that did serve
 deeper queues faster: the engine reads at most ~63 MB/s in an episode (§14), so even with no progress at its floor the
 work it held back takes <= 3.1% of the episode's length afterwards for the records (63 MB/s against >= 2.0 GB/s), <= 2.4%
 for the engram (1,000 against >= 40,900 pages a second), <= 22% for the decode (<= 3.2 tok/s from 63 MB/s over >= 19.9 MB a
 token, against 14.3-26.9 tok/s), plus <= ~1 s stepping back up.
 
-**What stays.** The episodes: the drive's firmware chooses when (§14). Three of tonight's four began while a cold engram
+**What stays.** The episodes: the drive's firmware chooses when (§14). Three of the four above began while a cold engram
 fetch ran (the fourth while records streamed beside the next chunk's engram fetch) - a lead, DSV41_BACKLOG #83. The
 user's run from a reboot, diagnostics on, is the scenario's own check; diagnostics go off after it.
 
@@ -1936,7 +1943,7 @@ reads), the two in series layer by layer.
   Decode itself did not move (19.08 / 19.99 / 19.06 against 18.42 / 19.14 / 19.42 tok/s, passes 4-6): the VRAM experts run
   beside the CPU pool, which is the longer of the two. Off in the config (a default changes only where it measured faster).
 
-**What is left, and why it is not taken tonight:** the GPU's kernels between the dense projections (the mixers, the
+**What is left, and why it is not taken today:** the GPU's kernels between the dense projections (the mixers, the
 attention, the norms: ~8 ms a token against a ~2 ms floor, §12) - fusing them is several kernels' work and moves rounding;
 the overlap of GPU 0's refill with GPU 1's last chunk (0.3-2.7 s a read) - GPU 0's loan holds the copies a stop puts back.
 
@@ -2001,7 +2008,7 @@ encoder: one line, and text only).
   which fails the same way without this change when every module runs in one process (it counts the threads named
   "(_loop)") and passes in its own module.
 
-The start tonight: 71 s -> 40 s. What is left is the drive (the load pass's 42.3 GiB at 2.24 GiB/s, the dense weights) and
+The start today: 71 s -> 40 s. What is left is the drive (the load pass's 42.3 GiB at 2.24 GiB/s, the dense weights) and
 ~11 s of pinning.
 
 ## 23. The decode's read-ahead with the route bias: no gain one layer ahead (2026-10-22)
@@ -2950,12 +2957,12 @@ tokens on 10-24; the launch configuration's switches and the installed engine su
 | wikitext 16x512 through the prompt path, kld_q3q2u.sh's switches | 0.1328 ± 0.0080 / 92.55% / 1.024 | 0.1307 ± 0.0079 / 92.62% / 1.023 |
 
 Both inside a standard error: the engine's changes since 10-21 and the launch configuration's switches cost no measurable
-quality, and §51 compares IQ2_XS with q3q2u on one engine. The rest since the good run (10-19 ~00:15, 4288c109's config):
-the pack q3q2 -> q3q2u (equal, §16), the template (V4.1's since 10-19 00:13), the effort (100 since 02:18), dsh's AGENTS.md
-(09-19) - unchanged or measured equal. The sampling is the one difference left: T 1.0 / top_p 0.95 / top_k 64 at 00:15;
-T 0.6 / top_p 1.0 / the engine's top_k 20 from 02:18; from 15:39 the whole vocabulary at T 1.0 / top_p 1.0 (DeepSeek's
-recommended settings; `sampler_full_kernel`: Gumbel-max, an exact sample of softmax(s / T)). The user keeps DeepSeek's
-settings.
+quality, and §51 compares IQ2_XS with q3q2u on one engine. The rest since the good run (10-19, 4288c109's config): the
+pack q3q2 -> q3q2u (equal, §16), the template (V4.1's since 10-19, just before that run), the effort (100 since ~2 h
+after it), dsh's AGENTS.md (09-19) - unchanged or measured equal. The sampling is the one difference left:
+T 1.0 / top_p 0.95 / top_k 64 in that run; T 0.6 / top_p 1.0 / the engine's top_k 20 from ~2 h after it; later the whole
+vocabulary at T 1.0 / top_p 1.0 (DeepSeek's recommended settings; `sampler_full_kernel`: Gumbel-max, an exact sample of
+softmax(s / T)). The user keeps DeepSeek's settings.
 
 ## 53. An outside correctness audit (2026-10-24): one engine hang and three server bugs fixed
 
@@ -3147,8 +3154,8 @@ the old path stays the fallback.
 
 **A. A request's pictures by reference (GENI manifests).** Since 2026-10-27 dsh keeps up to 256 MiB of pictures a request
 (the llamacpp provider's `maxRequestImageBytes`; under dsh's 20 MiB default it turned the oldest picture into text at each
-new one, and the engine read the rest of a ~300K conversation again: 176-225K tokens, 14-16 min, three times in an
-afternoon). Every turn the server now copies each picture's rows file (13.1 MB at full size: 800 rows of 4,096 floats)
+new one, and the engine read the rest of a ~300K conversation again: 176-225K tokens, 14-16 min, three times in a
+few hours). Every turn the server now copies each picture's rows file (13.1 MB at full size: 800 rows of 4,096 floats)
 into one file in /dev/shm, and the engine reads it whole and FNV-1a-hashes every byte to key the pictures for prefix reuse:
 0.80 GB/s on this Xeon (measured), 0.56 s a turn for today's 34 pictures, ~4.8 s and ~7.6 GB of RAM in flight at the
 ~290 pictures 256 MiB allows.
@@ -3172,7 +3179,7 @@ none; 2 s pauses - episodes within 1-2 minutes, and right after the nonstop run 
 in the 2 s pauses halved them (108 -> 53 slow seconds). The drive starts a rewrite in a lull. On the user's traffic
 (2026-10-26, a 3-minute sample at 595K) the drive was never idle half a second inside a turn; the lulls were the 2-2.5 s
 between turns. The work owed (a rewrite per so many reads of a block) does not change; when it is done might.
-- B1 (running since 2026-10-27 19:04, read only): a 1 Hz log of the drive's counters, the engine's bytes read and the
+- B1 (running since 2026-10-27, read only): a 1 Hz log of the drive's counters, the engine's bytes read and the
   server's busy flag - the episodes on the user's own traffic, their length, and the lull before each.
 - B2 (`moex/tools/dsv41/drive_lull_test.py`, the server stopped, ~40 min): §14's E2 load (12 readers, 4 MiB O_DIRECT calls
   over the pack, 8 s on / 2 s off) with and without a filler - one O_DIRECT read of a 256 MiB random file whenever the
@@ -3204,7 +3211,7 @@ still writes -inf everywhere else, and the top-512 selection reads the same arra
 (~1-1.5 h, the user's window): A's and C's GPU checks, then B2. Then the config (CAND_ONLY), the install, this section's
 results; B3/B4 only on B2's evidence.
 
-**Results, the server stopped (2026-10-27 19:44-19:55; `build-dsv41-dev`, sha256 566a1b1b).**
+**Results, the server stopped (2026-10-27, 11 min; `build-dsv41-dev`, sha256 566a1b1b).**
 - C: `dsv41_kernels_parity` PASS - the 24 new checks (the masked scores bit for bit, F16 and packed keys, ratios 1 and 2, T 1
   and 37, 40 / 1,000 / 1 blocks kept; the lists) and their negative controls (a list one block off differs), the rest as
   before. `DSV41_PARITY_ONLY=cand_bench`, one token at an index source after layer 20 (2,048 blocks of 8, packed keys):
@@ -3224,7 +3231,7 @@ results; B3/B4 only on B2's evidence.
 - Installed: `build-dsv41/strata-glm` = 566a1b1b (b4988786 kept beside it); strata-dsv41.json `STRATA_DSV41_CAND_ONLY=1` (48
   switches); both from the user's next start, with the server's manifest path (it follows the engine's `geni=manifest`).
 
-**B2's result (2026-10-27 19:56-20:41, the server stopped; `drive_lull_test.py`, 5-minute arms of §14's E2 load):**
+**B2's result (2026-10-27, 45 min, the server stopped; `drive_lull_test.py`, 5-minute arms of §14's E2 load):**
 
 | arm | slow seconds | episodes (longest) | the load's MB/s |
 |---|---|---|---|
@@ -3956,12 +3963,12 @@ the round found is in, measured and left off, or closed above.
 
 ## 65. A long read's pinned buffers given back when it ends (2026-11-01)
 
-**The report.** The user's "used" (GNOME System Monitor: MemTotal - MemAvailable) climbed from 113.8 GB during a 140K read
-(10-31) to 118.6, 120.6 and 122.0 GB the next day (12:02, 13:20, 14:23), the server up throughout. To 12:02 it was the
-desktop's programs opened since (Chrome 2.4 GiB, Firefox's content processes 0.7, gnome-system-monitor itself ~49 MiB an
-hour); the engine was flat. The step at 13:17 was the engine: dsh compacted the conversation at 843,424 tokens (its point:
-95% of the 888,000 window), and the next request, 785,857 tokens, parted from it before token 131,072, so the engine read
-720,321 tokens from the 65,536 checkpoint (2,549.7 s). In that read:
+**The report.** The user's "used" (GNOME System Monitor: MemTotal - MemAvailable) climbed from 113.8 GB during a 140K
+read (10-31) to 118.6, 120.6 and 122.0 GB the next day (over 2 h 21 min), the server up throughout. To the first reading
+it was the desktop's programs opened since (Chrome 2.4 GiB, Firefox's content processes 0.7, gnome-system-monitor itself
+~49 MiB an hour); the engine was flat. The step before the second reading was the engine: dsh compacted the conversation
+at 843,424 tokens (its point: 95% of the 888,000 window), and the next request, 785,857 tokens, parted from it before
+token 131,072, so the engine read 720,321 tokens from the 65,536 checkpoint (2,549.7 s). In that read:
 
 - the layer-major buffers grew to its windows (7 chunks of 9,363 tokens): `h_lm` 2 x 0.77 -> 5 x 0.72 GiB, `eg_lm_h`
   2 x 0.71 -> 2 x 0.77 GiB, `h_hand` 2 x 0.77 GiB (grow-only, from an earlier read) - the prompt path's pinned host memory
@@ -4151,7 +4158,7 @@ and its test is gone; the parser tests pass (74 OK). A rule that is CommonMark's
 ## 67. Unsloth's UD-IQ3_XXS replaces q3q2u (2026-11-06)
 
 **Why** (the user, 2026-11-06): the native release had served the day through its own config (`strata-dsv41-native.json`,
-`run-deepseek-v4.1-flash-native.sh`, its own conversation folder and learned profile), at 11-12 tok/s from noon to 16h
+`run-deepseek-v4.1-flash-native.sh`, its own conversation folder and learned profile), at 11-12 tok/s over 4 h
 with the conversation up to 233K tokens, flat - the adaptive tier and the SSD cache learn while it runs, so a restart
 would not have made it faster. Then the user asked to delete q3q2u for one of Unsloth's Q2_K_XL or IQ3_XXS sets, with
 their speeds first, and on the answer below chose IQ3_XXS.
@@ -4178,8 +4185,8 @@ tensor copies as it is. A shard with no expert tensor - the metadata-only first 
 - is not downloaded: 233.4 GB streamed of the quant's 394.7, its 161.3 GB of Q6_K Engram skipped (the engine serves the
 release's FP8 Engram tables with every pack). DSV41_BACKLOG #132 needed the second.
 
-**The pack** (2026-11-06 17:00-21:21, the user service `dsv41-udiq3xxs-pack` beside the native server, 14-15 MB/s; one
-stream cut at 18:08, resumed in place): 224.31 GB of records (208.9 GiB) in `~/AI/Models/dsv41-1017/ud-iq3xxs`, 12.3-16.4
+**The pack** (2026-11-06, 4 h 21 min, the user service `dsv41-udiq3xxs-pack` beside the native server, 14-15 MB/s; one
+stream cut, resumed in place): 224.31 GB of records (208.9 GiB) in `~/AI/Models/dsv41-1017/ud-iq3xxs`, 12.3-16.4
 MB an expert. Gate/up per layer: IQ2_XS (0-1), IQ2_XXS (2-4), IQ2_S (5-14), IQ3_XXS (15-24, 35-37, 39), Q3_K (25-34, 38);
 down: MXFP4 (0-9, 15-34), Q3_K (10-14, 38), IQ3_S (35-37, 39). The release's Engram tables and the drafter's experts are
 links into `native` (`engram`, `experts/M0-M2.bin`), as q3q2u's were; the shards' SHA-256s and the layout are in
@@ -4193,7 +4200,7 @@ problems. `checks/verify_pack_downs.py` (new; 4 experts a layer): the 40 layers 
 its stride, every stride its types' size rounded up to 4 KiB, and the 120 MXFP4 downs checked (30 layers) equal to the
 native release's bytes - all pass.
 
-**The switch.** q3q2u deleted at the user's word (16:59; the drive 87% -> 75% full, 87% again with this pack);
+**The switch.** q3q2u deleted at the user's word (the drive 87% -> 75% full, 87% again with this pack);
 `recipes/q3q2u/build.sh` rebuilds it from native with requant_pack (~64 min). `strata-dsv41.json`: `--pack
 .../ud-iq3xxs`, and `--expert-profile` the same file as `"expert_profile_save"`
 (`dsv41-expert-profile-udiq3xxs-learned.txt`, seeded with the native release's learned profile of 2026-11-06, 34.7M
@@ -4377,7 +4384,7 @@ tiers is the bound. Other policies at 4,814 slots (fixed VRAM):
 History says little about the next turn's experts; the size of the tiers does.
 
 **The layout.** With the experts' RAM as the cache alone (no RAM copy), the decode's misses fell, and the warm start is what
-that layout needs: it gives the start the profile's experts a fixed copy gave, and then adapts. Measured in tonight's
+that layout needs: it gives the start the profile's experts a fixed copy gave, and then adapts. Measured in today's
 protocol (§70's table): the cache-only layout at 85 GiB decoded turns 1-4 at 4.26 / 5.70 / 5.93 / 5.69 tok/s, but turn 0 at
 1.12 (empty); with the warm start, turn 0 at 3.37-3.40.
 
@@ -4410,9 +4417,9 @@ was the room layer-major needs: the loan was 10.66 of 9.70-10.58 GiB, so long re
 version, without a preload kernel, ran at 0.34-0.55x there: +10 ms a token waiting for the GPU (§71's runs). These kernels
 are bound by one block a row, not by bytes; a faster shape would change the summation order and lose BF16's bits.
 
-**The kernels, a third step (2026-11-09 05:40).** The runs showed what the benchmark then confirmed: every one-row kernel (BF16's
-and FP8's) runs the decode's projections at 150-500 GB/s. `gemv_fp8_rows_kernel<R>` (T = 1; `STRATA_DSV41_FP8_ROWS`, 4 by
-default, 1: the one-row kernels) computes R rows a block:
+**The kernels, a third step (2026-11-09).** The runs showed what the benchmark then confirmed: every one-row kernel
+(BF16's and FP8's) runs the decode's projections at 150-500 GB/s. `gemv_fp8_rows_kernel<R>` (T = 1;
+`STRATA_DSV41_FP8_ROWS`, 4 by default, 1: the one-row kernels) computes R rows a block:
 - thread t takes values t, t + 256, ... of each row, in gemv_bf16_w's order, with the same warp sum and block sum, so the
   bits are the same;
 - the block reads x once for its R rows, and the rows by 16-byte loads into shared memory, in tiles of 2,048 values.
@@ -4433,10 +4440,10 @@ Every output is bit for bit, and first_bits gives fd18c30dd37d9486 (binary 72e2c
 GPU fell from ~40 to 21.4-21.9 ms a token. The default is on for the GGUF set (`STRATA_DSV41_DENSE_FP8=0`: off): a matrix
 whose values are not exactly FP8 keeps its BF16, checked at load.
 
-## 71. Overnight: the three engines on equal terms, and the drive's episodes (2026-11-09)
+## 71. A long run: the three engines on equal terms, and the drive's episodes (2026-11-09)
 
-**The goal** (the user, before an overnight away): Strata-X the fastest and most efficient of the three engines on
-DeepSeek-V4.1 without compromising quality; test changes on all three over the common GGUF set; look for ways around the
+**The goal** (the user): Strata-X the fastest and most efficient of the three engines on DeepSeek-V4.1 without
+compromising quality; test changes on all three over the common GGUF set; look for ways around the
 drive's slow mode; DSpark if it helps; nothing that could take the PC down; ~1.5 GB free on the display card for every
 engine.
 
@@ -4449,7 +4456,7 @@ engine.
 - A watchdog (a user service) would have stopped a test engine, never the desktop or the installed engine, below 8 GiB of
   MemAvailable, at memory pressure "full" >= 40%, or with GPU 1 under 1 GiB free. It never had to act.
 
-**The episodes.** Episodes came often from 02:31 on: about 9 TB had been read from the set since it was written on
+**The episodes.** Episodes came often later in the run: about 9 TB had been read from the set since it was written on
 2026-11-08, and this drive's slow mode follows bytes read (§14).
 - A turn counts as episode-hit when the harness counted slow seconds in it (>= 80 ms a read and < 2,000 reads a second, its
   1 s samples).
@@ -4481,7 +4488,7 @@ best shape:
 | ours against Maya --tp 1 | 19% faster | 12-15% shorter | 17% fewer | a tie: 75.5 s against 73.7 s | Maya's 65 s against our 79 s |
 
 The 35 s our start spends filling the cache buys the first reply's decode: 3.77 tok/s after the cold read. Maya --tp 1 has
-2 clean turns from a night of episodes.
+2 clean turns from a run full of episodes.
 
 **Why ours decodes faster now** (the engines' own counters, clean turns):
 - ours misses 11.3-13.1 experts a token; upstream 9.9-17.9 (its store is LRU, 5,456 slots of 104 GB at its own size);
@@ -4489,7 +4496,7 @@ The 35 s our start spends filling the cache buys the first reply's decode: 3.77 
 - FP8 freed 6.13 GiB for experts (1,462 VRAM slots against 1,112);
 - the 4-row kernel halved the GPU's share of a token.
 
-**The episodes themselves** (drive-watch-night.log, the guard's lines):
+**The episodes themselves** (the drive watch's log, the guard's lines):
 - Each lasts 55-80 s with any engine, and they come in clusters - one engine's turn met three in 4 minutes.
 - At the guard's floor (QD1) the drive gave 336-343 reads a second at ~3 ms (~43 MB/s).
 - At the new `STRATA_DSV41_GUARD_FLOOR=2` (16 requests in flight) it gave 358-469 a second at 39-48 ms each: 5-38% more,
@@ -4512,7 +4519,7 @@ upstream and Maya in their faster prompt shape, --tp 1):
 - Maya at --tp 1 read 1.46x ours (its --tp 2, the shape its setup picks, took 420-440 s for the 16K turn alone).
 - At 100K, our follow-ups and decode stay at their 16K values.
 
-**Not done tonight:**
+**Not done today:**
 - DSpark - §70's trace says a window of k drafts needs 408 (k = 2) / 690 (k = 4) distinct experts against 240 a token, so
   on this drive it breaks even at ~60% acceptance and gains ~11% at 70%, ~20% at 80%;
 - a background warm fill (the 35 s at start), and why Maya --tp 1's cold 16K read beats ours by 14% (both read ~190-200 GB
@@ -4545,7 +4552,7 @@ episodes, the times do):
 
 21% fewer drive reads in the cold read. The first decode after it went from 3.4 to 3.79 tok/s.
 
-## 73. The start, the engram rows, and the daily config (2026-11-09 morning)
+## 73. The start, the engram rows, and the daily config (2026-11-09)
 
 **The start** (from timestamped engine logs; the drive's episodes hit nearly every start, so the clean figures are each
 step's own):
@@ -4608,7 +4615,7 @@ explain):
 |---|---|---|---|
 | native (11-06, 11-08; 12 h each) | 3.6-4.3 TB/h | ~150 MB | 9.8-12.3%, ~5-6 episodes an hour |
 | UD-Q2_K_XL (11-10, 2.2 h) | 0.33-1.2 TB/h when active | <= 13 MB | none seen |
-| UD-IQ1_M (11-09 evening, 11-10 night) | 0.16-0.23 TB/h | 2.7 MB | 1.4-4.6%, 0.7-2.4 an hour (downloads wrote 59-208 GB in both periods) |
+| UD-IQ1_M (two sessions, 11-09 and 11-10) | 0.16-0.23 TB/h | 2.7 MB | 1.4-4.6%, 0.7-2.4 an hour (downloads wrote 59-208 GB in both periods) |
 
 By day: 28-80 TB read and 9.9-12.6K s of slow time on 11-02 to 11-09; 3.1 TB and ~620 s on 11-10. The UD sets are the
 largest cut of the episodes so far; sysstat's samples cannot show a single episode, nor split reads from writes.
@@ -4934,9 +4941,9 @@ with pictures was not measured, and a request that fails for memory costs more t
 - **#146**: a follow-up on the UD sets over both cards' links - large; its CPU share is rounding-only, so with #149.
 - **#149**: the options that change the output - untouched, as asked.
 
-(§76, the same evening: #140's rest and #147 (a) built; #144's bounce slots argued out of; #146 open with what it needs.)
+(§76, the same day: #140's rest and #147 (a) built; #144's bounce slots argued out of; #146 open with what it needs.)
 
-## 76. The rest of §74's list: the head over both GPUs, the engram rows earlier, and a bit check without the lookup (2026-11-10, evening)
+## 76. The rest of §74's list: the head over both GPUs, the engram rows earlier, and a bit check without the lookup (2026-11-10)
 
 **Why.** §75 left five of §74's items open. The user's goal names every item, so this round takes them: two are built and
 measured below (#140 whole, #147's other half), one is argued out of (#144's bounce slots), one stays open with what it
@@ -5057,3 +5064,46 @@ that set).
 `launch-dsv4.1-flash-ud-iq1m.sh`, its expert profile, saved conversations and kernel-check folder, and
 `moex/tools/dsv41/checks/dspark_ab.py`, which read both configs (DSV41_BACKLOG #132, #134). The engine's IQ1_S kernels, its IQ4_NL
 engram reader and their checks stay; aaef063b stays as the binary before 0be985bf.
+
+## 77. V4.1 on the current build, and the Engram loader that refused it (2026-11-28)
+
+**Why** (the user, 2026-11-28): V4.1's run configs had stayed on the build of §75-§76 (strata-glm.0be985bf, a7488a1a),
+so the engine's work since - the Hy4 and ERNIE ports' shared kernels, the strata-x rename, PORT_AUDIT_ALL §6 - never
+reached it; the current build was to replace it, after V4.1's bit check.
+
+**What the check found.** The current build refused to start V4.1: "per_layer_token_embd: not F8_E4M3 or Q8_0 rows of
+256 (ggml type 67)". Since the Hy4 port (458da97a, 2026-11-18) the model load ran Hy4's Engram loader (load_engram_hy4,
+hy4.cpp) for every model with an Engram, after V4.1's own (load_engram, dsv41.cpp). Hy4's read the -m set's own table,
+whichever table load_engram had read (the set's, or another file's with STRATA_DSV41_ENGRAM_GGUF): it refused an own
+table of any type but 43 or Q8_0 (type 67, MXFP8, in the sets here; IQ4_NL, Q5_K, Q6_K or BF16 in others, the last ones
+run with another file's table) and a pack (no table in the GGUF), and took an own type-43 (or Q8_0) table for its own -
+V4.1 then started, with Hy4's row gathering running unread (its syncs and a row cache; not measured). Every public
+release up to and including 520cc8f0 has the fault.
+
+**The fix**: each loader runs for its own family only (load_engram for DeepSeek-V4.1, load_engram_hy4 for Hy4-flash),
+and the load stops with a message when a model has an Engram no loader took (engine.cpp) - a family added later fails
+loudly instead of running without its Engram.
+
+**How it was checked** (speed_ab.py, §75): X - bits: --no-adaptive, the slots pinned, the lookup window 1 - and S -
+speed: the config as deployed - one engine at a time, the user's server stopped. The 11-10 build reads its switches as
+STRATA_GLM_* (STRATA_X_* since 11-26), so it ran through a two-line wrapper that copies every STRATA_X_* the script sets
+to its old name.
+
+**Results**:
+- the UD-IQ1_S config (this machine's strata-dsv41-ud-iq1s.json: Unsloth's UD-IQ1_S experts with the MXFP4 set's dense
+  part and table; its config and launcher are local, not in the repository), with the first fixed binary (0ab76838): X's
+  six requests gave the same first-token logits hashes and the same greedy tokens as the 11-10 build (6808d1ba16e7c116,
+  b94ce49ef6fef1c7, 305de201777060b8, 9c8b5918e151d593, e569f9ea328dfbab, 88a7d98454ba08ab), the prompt times equal and
+  X's decode 4-7% faster. S (one run a row, good to about +-3%): plan 24.24 -> 27.68, code 24.09 -> 28.12 (the lookup's
+  drafts 0/7 -> 38/46), prose 24.51 -> 27.92 (no drafts in either), all 24.28 -> 27.91 tok/s (+15%); the engine's wait
+  for the GPUs 20.9-22.0 -> 15.7-17.1 ms a token;
+- the UD-Q2_K_XL config, with 0ab76838: X's six requests the same bits as the 11-10 build (S not run);
+- the final binary (075e08c6: the two family checks and the load's stop, above): X again on both configs, the same bits
+  in every request; its build's iq_parity and iq_multi_parity 0 failures, mmvq_grouped_parity all pass (S not run again:
+  it differs from 0ab76838 in the load only);
+- strata-dsv41-native.json and strata-dsv41.json name packs no longer on disk (the native pack holds 3 of its expert
+  files; the IQ3_XXS pack is gone): both builds stop at the same point.
+
+**Then**: the UD-IQ1_S and UD-Q2_K_XL run configs point at build-dsv41/strata-x.075e08c6, their backups beside them; its
+kernel checks were run by hand ($STRATA_X_DATA/checks-075e08c6: PASSED). launch-dsv4.1-flash-ud-q2kxl.sh still gates its
+start on checks-0be985bf's marker, not the config's binary (DSV41_BACKLOG #152).

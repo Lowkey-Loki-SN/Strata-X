@@ -128,8 +128,8 @@ def main() -> int:
     ap.add_argument("--call-ms", type=float, default=0.05)
     ap.add_argument("--ssd-gbs", type=float, default=2.76)
     ap.add_argument("--cache-gib", type=float, default=60.0)
-    ap.add_argument("--ram-gib", type=float, default=17.29, help="the engine log's '... GiB in RAM (pinned)' (2026-10-19 21:14)")
-    ap.add_argument("--vram-slots", default="979,815", help="the engine log's expert slots per GPU (2026-10-19 21:14)")
+    ap.add_argument("--ram-gib", type=float, default=17.29, help="the engine log's '... GiB in RAM (pinned)' (2026-10-19)")
+    ap.add_argument("--vram-slots", default="979,815", help="the engine log's expert slots per GPU (2026-10-19)")
     a = ap.parse_args()
     calib = [w for p in a.calib for w in tier_sim.read_trace(p)]
     ev = [w for p in a.trace for w in tier_sim.read_trace(p)]

@@ -25,7 +25,7 @@ PARAMS_PER_EXP = 3 * 2304 * 5120          # 35.39M
 NATIVE_MB = 18.80                          # one expert, FP4 + E8M0 (headers)
 
 # CPU pool, weight GB/s for one expert and 1 or 2 tokens through it: native_expert_cpu_bench, 20 threads, clamp 10,
-# 48 experts cycled from DRAM, quiet box (2026-10-18 11:10, after the user stopped a model in the background; V4-Flash
+# 48 experts cycled from DRAM, quiet box (2026-10-18, after a model running in the background was stopped; V4-Flash
 # shapes 4096 x 2048 from the DSV4 Q3_K file, requantized per STRATA_BENCH_REQUANT). Plain read of the same blobs:
 # 75.7-78.6 GB/s.
 FORMATS = {

@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from gguf_reader import GGUFFile  # noqa: E402
 
 # the pinned ggml's enum (build-dsv41/_deps/strata_llamacpp-src/ggml/include/ggml.h), and two ids of llama.cpp branches
-# past it that the Engram tables use (src/x/hy4.cpp:707, src/x/dsv41.cpp:2396)
+# past it that the Engram tables use (src/x/hy4.cpp:720, src/x/dsv41.cpp:2397)
 NAMES = {0: "F32", 1: "F16", 2: "Q4_0", 3: "Q4_1", 6: "Q5_0", 7: "Q5_1", 8: "Q8_0", 9: "Q8_1", 10: "Q2_K", 11: "Q3_K",
          12: "Q4_K", 13: "Q5_K", 14: "Q6_K", 15: "Q8_K", 16: "IQ2_XXS", 17: "IQ2_XS", 18: "IQ3_XXS", 19: "IQ1_S",
          20: "IQ4_NL", 21: "IQ3_S", 22: "IQ2_S", 23: "IQ4_XS", 24: "I8", 25: "I16", 26: "I32", 27: "I64", 28: "F64",
@@ -48,8 +48,10 @@ ARCHES = {"glm5next": "GLM-5.3-Flash", "glm5-next": "GLM-5.3-Flash", "deepseek4"
 # the families whose loaders take BF16 projections (src/x/dsv41.cpp:366, src/x/hy4.cpp:185, src/x/ernie.cpp:157); the others
 # take F32 or a GPU-kernel type only (src/x/engine.cpp:769 proj_ok, src/x/dsv4.cpp:161)
 BF16_DENSE = frozenset({"deepseek41", "hy_v4_flash", "ernie55"})
-# the Engram table's accepted types (per_layer_token_embd.weight): Hy4 F8_E4M3 or Q8_0 (src/x/hy4.cpp:713), DeepSeek-V4.1
-# MXFP8 or IQ4_NL (src/x/dsv41.cpp:2474; another file with STRATA_DSV41_ENGRAM_GGUF, or a pack's tables)
+# the Engram table's accepted types (per_layer_token_embd.weight): Hy4 F8_E4M3 or Q8_0 (src/x/hy4.cpp:726), DeepSeek-V4.1
+# MXFP8 or IQ4_NL (src/x/dsv41.cpp:2473; another file with STRATA_DSV41_ENGRAM_GGUF, or a pack's tables).  The engine's
+# load ran both loaders for V4.1 from 2026-11-18 to 2026-11-28, and Hy4's refused the type-67 tables this check accepts
+# (DSV41_PLAN §77): a check and an engine that disagree hide a load failure
 ENGRAM = {"hy_v4_flash": frozenset({43, 8}), "deepseek41": frozenset({67, 43, 20})}
 # DeepSeek-V4's weights the loader takes as F32 only (src/x/dsv4.cpp:180, :237: f32()) - ggml-org's MXFP4 file stores
 # indexer.proj as Q8_0, which the engine refuses

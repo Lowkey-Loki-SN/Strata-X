@@ -709,7 +709,11 @@ bool Engine::Impl::hy4_mpos_set(std::string& err) {
 // ------------------------------------------------------------------ the Engram
 
 bool Engine::Impl::load_engram_hy4(std::string& err) {
-    if (!hp.engram) return true;
+    // Hy4-flash's only: DeepSeek-V4.1's Engram is load_engram's (dsv41.cpp).  From 2026-11-18 to 2026-11-28 this loader ran
+    // for V4.1 too, on the -m set's own table whichever table load_engram read: it refused an own table of any type but 43
+    // or Q8_0 (type 67 in the sets here; IQ4_NL, Q5_K, Q6_K, BF16 in others) and a pack's (no table in the GGUF), and took
+    // an own type-43 or Q8_0 table - the Hy4 row gathering then ran, unread
+    if (!hp.engram || hp.arch != Arch::hy4) return true;
     size_t sh = 0;
     const strata::TensorInfo* ti = gm->find("per_layer_token_embd.weight", &sh);
     if (!ti) return fail(err, "hy_v4_flash: Engram keys but no per_layer_token_embd.weight");

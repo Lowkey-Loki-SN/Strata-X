@@ -1,6 +1,6 @@
 # MXFP4 at full speed: the full DeepSeek-V4-Flash and MiMo-V2.6 releases on this box (moex, from 2026-10-10)
 
-**Status (2026-10-10 21:15): concluded - the user called it a failure.**
+**Status (2026-10-10): concluded - the user called it a failure.**
 - On 125 GiB the exact releases reach ~45-50% of today's decode in the emulation; even hindsight-perfect placement reached 68%.
 - The wall is the ~8 first-touch NVMe reads per token that no cache or predictor can serve, on a drive the desktop shares.
 - The file-tier code (file tier, cold cache, burst, recency, route dump, emulation scripts, MXFP4 launchers) is NOT in the tree. It is kept in `git stash` ("moex: full-MXFP4-on-125GiB experiment ...").
@@ -61,7 +61,7 @@ user's server was busy, so these are noisy):
    - *Prompt look-ahead:* the stream issuer's next 16 entries are populated ahead of their pageable copies. The stream is (layer, id) ordered, so it is known in advance.
    - Switches: `STRATA_GLM_FILETIER=0`, `STRATA_GLM_FILE_THREADS`.
 
-## 3b. The GPU window (2026-10-10 17:49-18:20; logs moex/out/mxfp4-window-*.log, mxfp4-emu-*.log)
+## 3b. The GPU window (2026-10-10; logs moex/out/mxfp4-window-*.log, mxfp4-emu-*.log)
 
 **CPU, 20 threads, quiet box (real rows, clamp 10 where DSV4's):**
 
@@ -91,7 +91,7 @@ user's server was busy, so these are noisy):
 
 *OFF's text accepted more drafts (2.34 vs 1.6 tokens per window). Per trunk pass, OFF was 150 ms vs ON's 115.
 
-**The placement's ceiling (18:25-18:30, the same emulation, reserve 12):**
+**The placement's ceiling (the same emulation, reserve 12):**
 
 | placement | decode | cold reads |
 |---|---|---|
@@ -102,7 +102,7 @@ user's server was busy, so these are noisy):
 - But even perfect placement leaves ~58% of today's decode: the routing's long tail sends ~2% of routings to the ~12% of experts outside RAM, ~5 cold NVMe reads of ~10 MB per token.
 - So on 125 GiB exact MXFP4 DSV4 tops out near 55-60% of today's decode, however adaptive the tiers are.
 
-**The adaptive RAM tiers (18:52-19:02; a 512-token warm-up then a measured 384 in one load, the 8K prompt each time):**
+**The adaptive RAM tiers (a 512-token warm-up then a measured 384 in one load, the 8K prompt each time):**
 
 | | measured decode | pool ms/token | cold reads | warm set at the end |
 |---|---|---|---|---|
@@ -114,7 +114,7 @@ user's server was busy, so these are noisy):
 - ~10 cold experts per token is ~134 MB, so ~17 T/s is the NVMe's (2.3 GB/s) ceiling with perfect overlap.
 - Adaptivity helps (the oracle: +38%), but cannot lift that ceiling.
 
-**The NVMe's ceiling (19:12, scratchpad direct_probe.c, O_DIRECT preads over an unused GGUF):**
+**The NVMe's ceiling (scratchpad direct_probe.c, O_DIRECT preads over an unused GGUF):**
 
 | threads | 1 MiB reads | 4 MiB | 8 MiB |
 |---|---|---|---|
@@ -125,7 +125,7 @@ user's server was busy, so these are noisy):
 - ~2.75 GB/s whatever the depth or size: the drive's own limit (PCIe 3.0 x4). The file tier's 8 threads already reach it.
 - So the ~2.3 GB/s above (populate / faults) understated the O_DIRECT path by ~20%, and the cold tail's ceiling is ~20 T/s rather than ~17.
 
-**Where the oracle's 62 ms per token goes (18:28 log):**
+**Where the oracle's 62 ms per token goes (its log):**
 - The pool spends 27 ms computing, then waits ~18 ms per token for cold reads (~6 per token, ~61 MB).
 - At 2.75 GB/s that is 22 ms of NVMe time per 62 ms token: the drive idles ~65% of the time, because a read is issued only once its layer's routing is known.
 - The oracle's profile was 95% the prompt's own routing (8,192 prompt tokens against 384 generated: the prompt path counts its routings too).
@@ -137,7 +137,7 @@ user's server was busy, so these are noisy):
 - Either way ~6-12 experts per token come off the NVMe. One O_DIRECT stream reads ~1 GB/s, the drive ~2.3 GB/s, and a layer waits for its cold experts.
 - With ~28 GiB of experts beyond the pinned budget, the file tier gets this box to ~40-58% of today's decode and ~56% of today's prefill. CAPACITY, not compute, is the wall.
 
-**MiMo's own experts today (BPW3.0), 20 threads, 1 token (19:10):**
+**MiMo's own experts today (BPW3.0), 20 threads, 1 token:**
 - Layer 30, IQ2_S gate/up + IQ3_S down, 8.56 MiB: 47.8 GB/s = 5,322 experts/s (66% of the read ceiling: compute-bound).
 - Layer 10, IQ3_XXS gate/up + MXFP4 down, 10.38 MiB: 58.0 GB/s = 5,333/s.
 - MXFP4 runs ~5,200/s on 4 channels: about the same per expert. On 6 channels its DRAM-bound rate scales (~+45%) while the compute-bound IQ kernels do not.
@@ -187,7 +187,7 @@ In MXFP4, the same 25.5 GiB holds ~2,050 DSV4 experts (18.6%) and the same 23.4 
 - It needs per-expert formats inside a layer: two NativeFmts per layer, CPU jobs grouped by format, cold experts kept out of VRAM.
 - It is not bit-exact MXFP4: the user decides.
 
-## 5b. The prompt's burst (built 19:30, A/B queued)
+## 5b. The prompt's burst (built, A/B queued)
 
 - **Why:** the adaptive RAM tier moved 32 experts per 32 tokens, so after an 8K prompt it needed hundreds of tokens to reach the prompt's placement. In decode-runs mode (3-token prompts) it found +5%.
 - **What:** `prompt()` sets `ram_burst`.
@@ -202,7 +202,8 @@ In MXFP4, the same 25.5 GiB holds ~2,050 DSV4 experts (18.6%) and the same 23.4 
 - **Logs:**
   - `RAM tiers: the prompt's routing moves N experts ... (X GiB of fills queued ...)`
   - `... placement landed T s after it was queued`
-- **A/B:** 8K prompt + 384 tokens, the same emulation as 18:25 (static learned: 10.4 T/s) and 18:28 (oracle: 14.3).
+- **A/B:** 8K prompt + 384 tokens, the same emulation as the placement's ceiling (static learned: 10.4 T/s;
+  oracle: 14.3).
   - A = adaptive rounds without the burst, B = the burst.
   - The burst stays the default if B >= 12.5 T/s and B >= 1.15 x A.
 
@@ -216,7 +217,7 @@ In MXFP4, the same 25.5 GiB holds ~2,050 DSV4 experts (18.6%) and the same 23.4 
 - The script was validated on a synthetic dump (the d = 0 self-check reproduces the routing exactly).
 - Build the read-ahead only if, at lead >= 3 layers, cold recall >= 50% and precision >= 50%.
 
-## 5c. Measured 20:03-20:17: the burst, the oracle, the reserve (8K prompt + 384 plain tokens, w1, no MTP-acceptance confound)
+## 5c. Measured: the burst, the oracle, the reserve (8K prompt + 384 plain tokens, w1, no MTP-acceptance confound)
 
 The MXFP4 emulation (DSV4 UD-IQ3_S + 38 GiB balloon, ~28 GiB in place), one run each, nothing else reading the NVMe
 (io_watchdog.sh: no 4 KiB probe above 300 ms in any of these runs):
@@ -234,9 +235,11 @@ The MXFP4 emulation (DSV4 UD-IQ3_S + 38 GiB balloon, ~28 GiB in place), one run 
   - During R2, page cache held another ~22.5 GiB, leaving ~3 GiB truly free.
   - The kernel then kept evicting the larger warm set (51 GB re-read), and the refills competed with the cold reads: slower.
   - Pinned memory comes from the same pool. So 12 GiB of breathing room (swap full) is the floor, and the slack is already holding experts.
-- **The 19:52-19:59 desktop freeze** (MiMo's SHA-256 pass + arm A on the same NVMe, which also holds the full swap file): IO starvation, not memory (PSI io full avg300 22%, memory ~0). Heavy NVMe work is now serialized and run under io_watchdog.sh.
+- **The 7-minute desktop freeze** (before these runs: MiMo's SHA-256 pass + an earlier arm A on the same NVMe, which
+  also holds the full swap file): IO starvation, not memory (PSI io full avg300 22%, memory ~0). Heavy NVMe work is now
+  serialized and run under io_watchdog.sh.
 
-## 5d. The look-ahead study and the cold cache (20:18-20:29)
+## 5d. The look-ahead study and the cold cache
 
 **Route dump** (today's DSV4, 8K prompt + 384 plain tokens; plain decode at today's placement: 20.99 T/s, the w1 baseline). The pregate_study.py self-check reproduced all 3,720 rows of the engine's routing.
 
@@ -251,21 +254,21 @@ The MXFP4 emulation (DSV4 UD-IQ3_S + 38 GiB balloon, ~28 GiB in place), one run 
 - Read-ahead fails its bar (precision >= 50%): to catch the tail early it would read 3-7x the bytes.
 - The tail recurs instead: what the decode routes rarely, it routes again within a few tokens.
 
-**The cold cache (built 20:22, default on: `STRATA_GLM_COLD_LRU=128`, 0 = off):**
+**The cold cache (built, default on: `STRATA_GLM_COLD_LRU=128`, 0 = off):**
 - A cold read's private buffer now keeps its expert after the layer, as an LRU on top of `STRATA_GLM_COLD_BUFS` (16) buffers for the reads in flight.
 - A later layer that routes the expert computes from the buffer with the cached experts, in the first pass, with no read.
 - Hits are claimed before misses evict. The warm set's budget gives up the cache's bytes (~1.6 GiB at MXFP4 size).
 
 | run (same emulation, 8K + 384 w1) | decode | cold reads | cache hits |
 |---|---|---|---|
-| A (20:06) | 8.74 T/s | 5,725 | - |
+| A (§5c) | 8.74 T/s | 5,725 | - |
 | L: + the cold cache (128) | **10.21 T/s (+17%)** | 3,933 | 2,591 |
 
 - The bar was 1.15 x A = 10.05, so it stays on.
 - One watchdog probe reached 389 ms, during the load or the warm-set fill, not the decode.
 - This emulation now runs at 49% of today's plain decode (20.99 T/s). The oracle placement reached 68%.
 
-## 5e. Recency at scale (20:45-21:10): the page cache as an LRU, and a 1,024-expert private cache
+## 5e. Recency at scale: the page cache as an LRU, and a 1,024-expert private cache
 
 | run (emulation, 8K + 384 w1) | in place | decode | cold reads | cache hits | notes |
 |---|---|---|---|---|---|
@@ -288,10 +291,12 @@ The MXFP4 emulation (DSV4 UD-IQ3_S + 38 GiB balloon, ~28 GiB in place), one run 
   - `sudo dmidecode -t memory` gives the installed part numbers to match.
 - **A second Xeon Gold 6148 in the empty socket:** +6 channels, +20 cores. Needs a NUMA-aware pool and arena (each socket computes the experts in its own memory).
 
-## 6b. Ready for the switch (2026-10-10 19:10)
+## 6b. Ready for the switch (2026-10-10)
 
 - **Configs and launchers:** strata-dsv4-mxfp4.json / strata-mimo-mxfp4.json + run-deepseek-v4-flash-mxfp4.sh / run-mimo-v2.6-flash-mxfp4.sh. They are the production configs with only the model files changed; same port and client names.
-- **Integrity of the new byte paths:** STRATA_GLM_FILE_VERIFY=1 compares every direct cold read and RAM-tier fill with the mapping, and the prompt stager's direct reads too. 5,992 slices, 0 mismatches (DSV4 emulation, 19:05).
+- **Integrity of the new byte paths:** STRATA_GLM_FILE_VERIFY=1 compares every direct cold read and RAM-tier fill with
+  the mapping, and the prompt stager's direct reads too. 5,992 slices, 0 mismatches (DSV4 emulation; before §5b's
+  burst and §5d's cold cache).
 - **mx512's default layout (STRATA_MX512_V=1):** the activations repacked to the weights' unpack order. +7% at 1 token, +1-3% at 2-3, bitwise equal. Interleaving 2-4 rows was slower and was removed.
 
 ## 7. Next

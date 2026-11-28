@@ -454,7 +454,7 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
 
 - **Long reads**: the run config now leaves 20 GiB (§9; was 28): an 8K read re-reads ~1.6 GiB of lent experts on a cold page
   cache (10 GiB at 28); decode reads nothing.
-- **DSpark**: deferred (the user, 2026-11-25), its acceptance measured offline the same night (moex/tools/ernie55/ref/
+- **DSpark**: deferred (the user, 2026-11-25), its acceptance measured offline the same day (moex/tools/ernie55/ref/
   dspark_accept.py on the FP8 reference: the engine's greedy replies to four chat prompts, 1,610 blocks of 7): 3.13 of 7
   drafts kept, the first 81%, each later one 77-81% given the ones before; tokens a window of 4 rows 2.94 (code 3.60, math
   3.56, an explanation 2.60, a story 2.07). With a window's measured cost (4 rows 2.15 tokens' time) and the drafter's own
@@ -495,7 +495,7 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
   20 applied: on the FP8 reference's own distributions (the KLD base, 3,071 positions, T 1.0) the 0.95 nucleus is wider
   than 20 tokens at 21.0% of positions and wider than 64 at 12.0% (median 2, 90th percentile 89, 99th 818); the total
   variation from top_p 0.95 over the whole vocabulary 0.042 at top_k 20, 0.023 at the widest list (64).
-  - 2026-11-25 night (the user's aim: correct, and matching the release): the whole vocabulary's nucleus in the shared
+  - 2026-11-25 (the user's aim: correct, and matching the release): the whole vocabulary's nucleus in the shared
     sampler (DSV41_BACKLOG #56), so top_k 0 with top_p < 1 samples as vLLM does - softmax(s / T) over every token
     (temperature first: the engine now orders ERNIE's sampling as DeepSeek-V4.1's, temp_first), the smallest set of the
     likeliest tokens holding top_p, the draw inside it. Each row's cut is a key from a radix select
@@ -508,7 +508,7 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
     rows, nuclei of ~46,600 tokens); the top_p 1 path's draws unchanged. One row at 201,216 tokens: 87 us (a narrow nucleus)
     to 157 us (a third of the vocabulary kept), against the 64-token list's 139-152 us. strata-ernie55.json's `sampling` has
     no top_k now (T 1.0, top_p 0.95: the family's, the release's). STRATA_FULL_NUCLEUS=0: the 64-token list, as before.
-- **The prompt as the release's server builds it** (2026-11-25, night; all four fixed at the user's word). A
+- **The prompt as the release's server builds it** (2026-11-25; all four fixed at the user's word). A
   side-by-side of the server's whole prompt path - the conversion, the #537 marking of every special token's text inside
   a message, the template, the unmarking - against encoding_ernie.py's segments (the same text, and a special token at
   the same places: encode_segments makes one only where the renderer wrote one, and joins the ordinary text between them
@@ -536,11 +536,12 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
   `STRATA_ERNIE_IDX_FP8=0` scores the indexer exactly instead of on the references' E4M3 rounding (a check's switch);
   `STRATA_GLM_FP8_WARP=0`, `STRATA_GLM_F32_CHUNK=0`, `STRATA_ERNIE_ROUTE_WARP=0` the decode kernels before 2026-11-25 (the
   same bits, slower). The run config's "env" sets the CPU pool's switches (STRATA_POOL_SPREAD / PIPELINE / TASKS=252) and STRATA_DSV41_HUGE_PIN=1.
-- **The binary**: `build-dsv41/strata-glm.ernie55` (md5 d7ca0a3d, 2026-11-25 night: 882a9836's kernels + the head over both GPUs +
-  `--prefill-ring-frac` + the opt-in tensor-core prompt GEMMs (STRATA_GLM_TC3), built from the working tree - not committed yet;
-  every earlier kernel's SASS unchanged, two added); the ones before kept beside it: `strata-glm.ernie55.3c9265ee` (no TC3),
-  `.882a9836` (the exact kernel levers), `.f2cea209`, `.prev-20261125` (facd5800). The run config: `--layer-split 22
-  --prefill-ring-frac 0.75` and "env" STRATA_GLM_TC3=1. To go back one step: copy `.3c9265ee` over it, split 23, drop the env.
+- **The binary**: `build-dsv41/strata-glm.ernie55` (md5 d7ca0a3d, 2026-11-25: 882a9836's kernels + the head over both
+  GPUs + `--prefill-ring-frac` + the opt-in tensor-core prompt GEMMs (STRATA_GLM_TC3), built from the working tree - not
+  committed yet; every earlier kernel's SASS unchanged, two added); the ones before kept beside it:
+  `strata-glm.ernie55.3c9265ee` (no TC3), `.882a9836` (the exact kernel levers), `.f2cea209`, `.prev-20261125`
+  (facd5800). The run config: `--layer-split 22 --prefill-ring-frac 0.75` and "env" STRATA_GLM_TC3=1. To go back one
+  step: copy `.3c9265ee` over it, split 23, drop the env.
 - **The checks**, each without the server:
   - `build-dsv41-dev/ernie_kernels_check` - the new kernels against CPU transcriptions (a GPU, no model);
   - `ref/oracle_dump.py --gguf G --ids @F --out D [--probe-from N]` then `strata-glm -m G --tokens-file F --oracle D
@@ -560,9 +561,10 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
 
 The 41,661-token runaway of 2026-11-26 (the session the user named, decoded to a scratch folder for this and deleted
 after) was a thinking that never closed: ~29K tokens of planning, then a cycle of six short lines that took the
-thinking over (from reply token ~36.4K on, no other line). This section is what the night of 2026-11-27 measured about it,
-and about the set's recipe. Every number below came from a run that night; the tools are in moex/tools/ernie55 (`kld_compare.py`,
-`imx_tools.py`, `ref/kld_base.py`, `ref/recipe_check.py`, convert_gguf_ernie55's `--measure` and `--fakequant`).
+thinking over (from reply token ~36.4K on, no other line). This section is what the runs of 2026-11-27 measured about
+it, and about the set's recipe. Every number below came from a run that day; the tools are in moex/tools/ernie55
+(`kld_compare.py`, `imx_tools.py`, `ref/kld_base.py`, `ref/recipe_check.py`, convert_gguf_ernie55's `--measure` and
+`--fakequant`).
 
 - **The sequence**: the request rebuilt from the session (its system prompt, four user turns, 21 tools, effort max) renders
   to 7,931 tokens - the server log's count for that request - and the reasoning re-tokenizes to 41,652 of the 41,661
@@ -589,13 +591,13 @@ and about the set's recipe. Every number below came from a run that night; the t
 - **So**: on this request the stall is the model's own - the exact weights in an fp32 implementation of the references'
   arithmetic plan without closing and continue the cycle as the set does; neither the engine nor the quantization made it.
   Not shown: whether FP8 would have reached such a cycle on a trajectory of its own (the text was sampled from the set).
-  What ends it is the server: since this night `"reasoning_loop_recovery": "wrap"` in the run config (serve/server.py; at
+  What ends it is the server: since that day `"reasoning_loop_recovery": "wrap"` in the run config (serve/server.py; at
   `"reasoning_loop_coverage"` 1.0 it would have fired at ~37.8K reply tokens on this text) closes the thinking with the
   family's wrap-up and lets the model answer, where `"stop"` ended the reply with none. On the real engine (the live
   binary, a test server): the same wrap-up path, reached through a thinking budget of 150 tokens, closed the thinking
   mid-sentence and the model answered in full (finish "stop", 587 tokens). A loop could not be provoked on demand: asked to
   write one line 400 times in its thinking, the model declined ("filler text doesn't accomplish anything") and answered.
-- **"wrap" on the real loop** (2026-11-27 morning; the session decoded again for this and deleted after): the stalled
+- **"wrap" on the real loop** (2026-11-27; the session decoded again for this and deleted after): the stalled
   request's own 7,931 prompt tokens and its reasoning up to reply token 36,000 (where the cycle was taking over), through the
   server's request code (Service.run, the request's 21 tools) on the real engine with the IQ3_S / IQ4_XS set and the run
   config's sampling. The model went on cycling; the guard read a fully repeated window at 2,560 generated tokens and wrapped
@@ -604,7 +606,7 @@ and about the set's recipe. Every number below came from a run that night; the t
   with its run config's own "wrap": fired at 3,072, the same answer shape. Two more checks: without the guard one resumed
   run left the cycle by itself after 683 tokens; closing the thinking at reply token 24,000 (as a 24K thinking budget would)
   gave the same one-line answer and `bash` call, so a budget is not needed for this request to go on.
-- **The engine and the reference against the official code** (2026-11-27 morning, at the user's doubt that the engine was
+- **The engine and the reference against the official code** (2026-11-27, at the user's doubt that the engine was
   cleared only against our own reference): two audits read `ref/model.py` line by line, one against vLLM-ERNIE (ba322a5 on
   vLLM 5df63a7, the vLLM files the reference was written without - the sparse-attention backends, the compressor's helpers,
   the indexer's top-k - fetched at that commit), one against SGLang's port (f4284f2). No semantic difference on any
@@ -625,10 +627,10 @@ and about the set's recipe. Every number below came from a run that night; the t
 - **No thinking budget** (2026-11-27, the user's instruction: no cap, since the loop guard ends a thinking caught in a
   loop): the run config sets no `reasoning_budget_tokens`, so a thinking runs as long as the model takes it; what ends a
   cycle is the loop guard ("wrap", at its look: 2,560 and 3,072 generated tokens on the real loop). A budget of 32,768
-  was in the template for an hour that morning (public b0867eb8) and is gone again. For the record, from that hour: the
+  was in the template for an hour that day (public b0867eb8) and is gone again. For the record, from that hour: the
   dev server's log of 774 ERNIE-5.5 requests had generated tokens a reply median 376, 99th percentile 4,896, the longest
   normal one 12,782, and only the stalled one past 16,384.
-- **A stall in another order** (2026-11-27 afternoon): the guard's passage count catches a cycle only when a 12-word
+- **A stall in another order** (2026-11-27): the guard's passage count catches a cycle only when a 12-word
   passage repeats - the stall's six short lines in their order, at 1,024 generated tokens on a scripted engine with this
   family's template and tokenizer, but the same lines shuffled, or shuffled with a new line every 20, ran 16K tokens with
   no look reading them as a repeat. The look now also reads a cycle of short lines in any order (serve/server.py
@@ -655,19 +657,20 @@ and about the set's recipe. Every number below came from a run that night; the t
   down alone 1.032 / 0.718 / 0.487% (the set's IQ4_XS 0.316 / 0.205 / 0.132). A projection from the weight errors had it
   13-23% better; it is worse at every layer measured. Spending fewer bits on gate/up instead (IQ2_S, 6.1% at the weights)
   would double the larger share. At the set's size its recipe stays.
-- **A bigger calibration set** (the engine's importance matrix, `strata-x --imatrix`, after this night's fix for a latent MoE:
-  over the reference's own 16 chunks it matched the reference's matrix - gate/up cosine 0.9993-1.0000, down 0.993-0.998;
-  then 64 chunks of the same calibration files, none of the KLD yardstick's held-out ones, merged with the reference's 16 by
-  `imx_tools.py`: `ernie55-plain80.imx`, 137.6M routed rows, 21,439 experts seen against 21,327): down's column importance
-  moved 35-60% (relative L2) from the 16-chunk matrix, the quantization error at the MoE's output 0.1 / 0.3 / 2.0% at layers 12
-  / 22 / 41 (the set's recipe, `recipe_check.py --no-bit-check`). The importance matrix's size is not a lever here.
+- **A bigger calibration set** (the engine's importance matrix, `strata-x --imatrix`, after that day's fix for a latent
+  MoE: over the reference's own 16 chunks it matched the reference's matrix - gate/up cosine 0.9993-1.0000, down
+  0.993-0.998; then 64 chunks of the same calibration files, none of the KLD yardstick's held-out ones, merged with the
+  reference's 16 by `imx_tools.py`: `ernie55-plain80.imx`, 137.6M routed rows, 21,439 experts seen against 21,327):
+  down's column importance moved 35-60% (relative L2) from the 16-chunk matrix, the quantization error at the MoE's
+  output 0.1 / 0.3 / 2.0% at layers 12 / 22 / 41 (the set's recipe, `recipe_check.py --no-bit-check`). The importance
+  matrix's size is not a lever here.
 - **IQ3_S gate/up with IQ4_XS down** (11.125 bits a triple, +7.2%; experts 125.45 GB against 117.0, the set 143.5 GB),
   measured as one recipe: layer 12 1.771% against the set's 2.568% (-31.1%), layer 22 1.301% / 1.887% (-31.1%), layer 41
   1.097% / 1.618% (-32.2%). The quality step this box can take, for ~8.4 GB more RAM or reads.
 - **The set built** (`convert_gguf_ernie55 --types gu=iq3_s --types d=iq4_xs --imatrix ernie55-plain80.imx --reuse <the
   IQ3_XXS set>`: the 18.09 GB of dense tensors copied, the experts made; 5,533 s; every tensor re-read the same):
   `~/AI/Models/ernie55-gguf/ERNIE-5.5-Flash-IQ3S-IQ4XS-0000N-of-00003.gguf`, 143.52 GB. On the KLD yardstick (6 x 4,096,
-  positions 2,048-4,094; the live binary and run config, the same night): **mean KLD 0.0389 +- 0.0013** (median 0.0039,
+  positions 2,048-4,094; the live binary and run config, the same day): **mean KLD 0.0389 +- 0.0013** (median 0.0039,
   99th percentile 0.65), the same top token at **95.07%**, perplexity 1.75% above the reference's - the IQ3_XXS set measured
   again beside it 0.0629 +- 0.0020 (median 0.0068, 99th 1.00), 93.20%, 2.93%. Its load at the same `--resident-headroom-gib
   20`: 4,569 experts in VRAM against 4,899 (each 7.2% larger), the RAM copy 94.69 GiB against 92.88 (the complement 91.99
@@ -679,7 +682,7 @@ and about the set's recipe. Every number below came from a run that night; the t
   same prompt, back to back): 31.07 / 31.51 / 31.68 T/s against 33.19 / 32.79 / 32.28 (-4.1%), the CPU pool 10.8-11.8 ms a
   token against 10.3-11.0. The server's end-to-end checks (moex/tools/ernie55/server_checks.py, the public checkout's
   server): 8 of 8 PASS. Since 2026-11-27 both local run configs name it (`strata-ernie55.json.bak-iq3xxs-20261127` beside
-  each is the one before). Since 2026-11-27 evening the template and the README's step 3 name it too. The Hugging Face
+  each is the one before). Since later on 2026-11-27 the template and the README's step 3 name it too. The Hugging Face
   repo carries both sets, one folder each, first named `IQ3_S-IQ4_XS/` and `IQ3_XXS-IQ4_XS/` (the IQ3_XXS files were
   moved there server-side, their hashes unchanged). Hugging Face labels a GGUF file by the last quantization name in its
   path (huggingface.js `parseGGUFQuantLabel`), so its GGUF panel showed the two sets as one IQ4_XS entry of 279 GB. On
@@ -706,7 +709,7 @@ and about the set's recipe. Every number below came from a run that night; the t
   expert slot for the larger (6.68 MB against 5.83), ~13% fewer experts in VRAM, and the RAM copy at the 20 GiB headroom no
   longer holds every expert outside VRAM (estimated from the slot rule and the IQ3_S / IQ4_XS set's load, not built). The
   IQ3_S / IQ4_XS set stays the run configs' set.
-- **The upgrade built and measured** (2026-11-27 afternoon; the IQ3_XXS set deleted for the room, at the user's word):
+- **The upgrade built and measured** (2026-11-27; the IQ3_XXS set deleted for the room, at the user's word):
   `ERNIE-5.5-Flash-IQ3S-IQ4XS-L10-15-IQ4XS-0000N-of-00004.gguf`, 146.13 GB (`--types gu=iq3_s --types d=iq4_xs --types
   gu=iq4_xs:10-15 --reuse <the IQ3_S / IQ4_XS set>`: 12 tensors made, 1,504 copied, 1,012 s). On the KLD yardstick 0.0370 +-
   0.0012 against 0.0389 (-4.7%), the same top token 95.33% / 95.07%. Its load at the same headroom: 3,951 experts in VRAM
@@ -716,7 +719,7 @@ and about the set's recipe. Every number below came from a run that night; the t
   (the slot cap alone, simulated on the IQ3_S / IQ4_XS set with STRATA_X_STAGE_SLOTS, had cost 2.2%: the larger experts and
   the spill add the rest). 5% nearer the reference for 7.6% of decode and the RAM's margin: not better on this box. The
   IQ3_S / IQ4_XS set stays the run configs' set; the upgrade's files are kept for the user's choice.
-- **The long-session slowdown** (2026-11-27 evening, the live server's serve lines and the kernel's counters): with the
+- **The long-session slowdown** (2026-11-27, the live server's serve lines and the kernel's counters): with the
   IQ3_S / IQ4_XS set the CPU pool fell from 52 to ~40 GB/s and the VRAM tier's swap rounds rose from 0.2-0.7 to ~3.4 ms
   a token, while the engine re-read 27-66K GGUF pages a second; the counters point at the RAM copy's exchange blobs
   running out and experts left only in the file (the cause not yet proven). The shared tier code's opt-in fix

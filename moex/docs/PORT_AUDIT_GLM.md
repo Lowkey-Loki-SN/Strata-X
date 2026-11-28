@@ -40,7 +40,7 @@ changes. The KLD is also below Strata's Qwen port (0.022).
   slot is hashed on its GPU and compared after the load (3,431 slots in 35 ms), and after every first-use fill, swap and
   post-prompt refill. A mismatch fails the load, or at runtime evicts the slot so the CPU computes that expert.
 
-## 2. Fixed after the audit (2026-10-07 evening)
+## 2. Fixed after the audit (2026-10-07)
 
 | item | was | now | evidence |
 |---|---|---|---|

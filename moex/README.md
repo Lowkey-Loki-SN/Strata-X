@@ -76,10 +76,11 @@ The notes write these folders as `~/AI/...` (`~/AI/Strata-X` is this checkout, `
 
 ## Notes
 
-`moex/docs/` is the fork's engineering log, kept as it was written (the maintainer's quoted words paraphrased and a few
-local details generalized on 2026-11-28): dated entries, every number with what it was measured on, the decisions and
-the measurements that were rejected. Unless an entry says otherwise, the box is two RTX 3080 20 GB (power-limited to 180
-W), 125 GB of RAM, a 20-core Xeon Gold 6148 and one NVMe drive. "The user" in the notes is the maintainer.
+`moex/docs/` is the fork's engineering log, kept as it was written (the maintainer's quoted words paraphrased, a few
+local details generalized and the times of day dropped on 2026-11-28): dated entries, every number with what it was
+measured on, the decisions and the measurements that were rejected. Unless an entry says otherwise, the box is two RTX
+3080 20 GB (power-limited to 180 W), 125 GB of RAM, a 20-core Xeon Gold 6148 and one NVMe drive. "The user" in the notes
+is the maintainer.
 
 Until 2026-11-26 the engine was called `strata-glm`, and the notes written before then use its old names:
 

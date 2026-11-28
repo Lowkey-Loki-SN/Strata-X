@@ -82,6 +82,10 @@ Two ways to give it the model:
   the MXFP4 set's dense part and MXFP8 Engram table; Unsloth's UD-IQ3_XXS experts as a pack (KLD 0.0658 against the release,
   `moex/docs/DSV41_PLAN.md` §67). Not run here: an Unsloth set's own dense part.
 - **Also**: images through the release's own encoder (`moex/docs/VISION.md`); DSpark drafting.
+- **Every public release up to and including 520cc8f0** (the builds since 2026-11-18) did not start DeepSeek-V4.1 from a
+  set whose own Engram table is any type but 43 or Q8_0 - MXFP8 as ggml type 67 (the sets here), IQ4_NL, Q5_K, Q6_K or
+  BF16 (the last ones with another file's table, as above) - nor from a pack; a later build does - run here on the
+  type-67 sets (`moex/docs/DSV41_PLAN.md` §77), the others not run since.
 
 ## MiMo-V2.6-Flash
 

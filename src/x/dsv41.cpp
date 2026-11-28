@@ -2375,9 +2375,10 @@ bool Engine::Impl::load_dspark_v41(std::string& err) {
 
 /// The engram's inputs: the hash tables from the GGUF's metadata (Hparams::eg_*, engram_tables.py's), the pack's table files
 /// mapped read-only (rows of eg_dim FP8 bytes in L<il>.weight.bin, eg_dim / 32 E8M0 bytes in L<il>.scale.bin), q_weight *
-/// k_weight on the layer's GPU, and the window buffer on the engram layers' stage.  Nothing without hp.engram.
+/// k_weight on the layer's GPU, and the window buffer on the engram layers' stage.  Nothing without hp.engram, or for any family
+/// but DeepSeek-V4.1 (the load stops when no loader took an Engram: engine.cpp).
 bool Engine::Impl::load_engram(std::string& err) {
-    if (!hp.engram || hp.arch == Arch::hy4) return true;   // (Hy4-flash's: load_engram_hy4, hy4.cpp)
+    if (!hp.engram || !hp.v41) return true;   // DeepSeek-V4.1's only (Hy4-flash's: load_engram_hy4, hy4.cpp)
     auto e = std::make_unique<Engram>();
     e->L = (int) hp.eg_layers.size();
     e->cols = (int) ((hp.eg_ngram - 1) * hp.eg_heads);

@@ -1547,7 +1547,9 @@ bool Engine::load(const std::string& gguf, const EngineOptions& o, std::string& 
                 (long long) m.hp.n_embd,
                 (long long) m.hp.n_expert, (long long) m.hp.n_used, (long long) o.n_ctx);
     // the DSpark drafter before the trunk's experts: its pinned RAM comes out of what the resident RAM mode then sees
-    if (!(m.load_dense(err) && m.bind_layers(err) && m.load_engram(err) && m.load_engram_hy4(err) && m.load_dspark(err) && m.load_draft_mtp(err) && m.load_dflash(err) &&
+    if (!(m.load_dense(err) && m.bind_layers(err) && m.load_engram(err) && m.load_engram_hy4(err) &&
+          (!m.hp.engram || m.eg || m.heg || m.fail(err, "an Engram no loader takes (DeepSeek-V4.1's and Hy4-flash's only)")) &&
+          m.load_dspark(err) && m.load_draft_mtp(err) && m.load_dflash(err) &&
           m.load_experts(err) &&
           m.alloc_state(err) && m.load_dfly(err) && m.init_cache(err) && m.route_bias_init(err)))
         return false;

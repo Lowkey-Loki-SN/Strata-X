@@ -67,7 +67,7 @@ requests the drive's slow mode did not hit (those it hit ran at 2.4-4.1 tokens/s
 
 ³ The engine's own benchmark at the run config's settings, not through the server: 512 greedy tokens after a 256-token
 warm-up, one prompt, three runs back to back. The IQ3_XXS / IQ4_XS set read 32.3-33.2 tokens/s the same way, the same
-night; its row is through the server. Prompt reading was not measured for the IQ3_S set.
+day; its row is through the server. Prompt reading was not measured for the IQ3_S set.
 
 The prompts, their lengths and the runs differ from row to row; the Hy4-flash row is a 250K-token conversation through
 the server at its run config's sampling, the others shorter prompts. Each number, with how it was measured, is in the
