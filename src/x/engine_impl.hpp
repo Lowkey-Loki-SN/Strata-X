@@ -1061,6 +1061,17 @@ struct Engine::Impl {
     std::vector<std::pair<int64_t, uint64_t>> xpool;
     std::vector<uint64_t> ram_cap;      ///< [key]: the capacity of the RAM blob it holds (ram_off), what it returns to the pool
     uint64_t ram_bytes = 0;             ///< the arena (the experts' blobs and the exchange blobs)
+    /// moex (PORT_AUDIT_ALL §6, STRATA_X_RECYCLE=1): [slot] 1 where the plan gave the expert a RAM copy for the prompt path's
+    /// lend region - an expert there keeps its RAM blob while the slot is live; anywhere else a double's blob goes back to the
+    /// pool (recycle_doubles); the plan's blob count, for the check
+    std::vector<char> lend_slot;
+    int64_t ram_blobs_plan = 0;
+    bool ram_whole = false;              ///< the RAM plan holds every expert outside VRAM (not "what fits", not exchange-only)
+    int sync_fills_gap = 0;              ///< (§6) synchronous fills from the file finalize_swaps did in this gap between windows
+    void ram_counts(int64_t& doubled, int64_t& file_only) const;   ///< (§6) experts in VRAM and RAM; in neither (not on the SSD)
+    bool in_lend_cover(int32_t slot) const;
+    void recycle_doubles(const std::vector<char>& spare);
+    void tier_check() const;
     struct Src {
         const uint8_t *g, *u, *d;
         bool pinned;                    ///< one blob [g | u | d] in the pinned arena: a single asynchronous copy

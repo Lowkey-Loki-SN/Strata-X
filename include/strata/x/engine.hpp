@@ -322,6 +322,14 @@ struct EngineStats {
     /// moex (DSV41_BACKLOG #103, STRATA_DSV41_EG_DEDUP=1): the prompt chunks' engram rows asked for, and the distinct ones read
     int64_t eg_dedup_asked = 0, eg_dedup_read = 0;
     int64_t swaps = 0, fills = 0;   ///< adaptive replacements, and slots filled (load + first use)
+    /// moex (PORT_AUDIT_ALL §6): the RAM copy's bookkeeping, summed - exchange blobs taken by swaps (a VRAM-only victim copied
+    /// out) and by the caches' growth, given back by a swap's incoming expert, released from doubles (an expert in VRAM that
+    /// also held a RAM blob); swap attempts that waited for a blob owed to them (a swap that waits again counts again);
+    /// victims of a swap from RAM sent to the file for want of a free blob (or of a pinned arena: the fallback), growths'
+    /// experts sent there (no blob, or a failed copy out); victims sent to the file in place of an incoming expert read from
+    /// it (Engine::ram_copy_state: its state)
+    int64_t ram_take_swap = 0, ram_take_grow = 0, ram_give = 0, ram_recycled = 0, ram_wait = 0;
+    int64_t ram_fallback = 0, ram_file_grow = 0, ram_file_swap = 0;
     int64_t slots = 0;
     double slot_mib = 0;            ///< one VRAM slot (the expert blob size the tier was sized for)
     int64_t streamed = 0;           ///< experts streamed to the GPU by the prompt path
@@ -498,6 +506,17 @@ public:
     /// oracle's value.  Synchronous, for checking only; null switches it off.
     void set_recorder(moex::Recorder* r);
     const EngineStats& stats() const;
+    /// moex (PORT_AUDIT_ALL §6): the RAM copy's state now - the plan's blobs (0: no RAM copy), free exchange blobs, experts in
+    /// neither VRAM nor RAM (read from the GGUF when used; the SSD tier's not counted), doubles.  It walks every expert:
+    /// between requests, not per window
+    struct RamCopyState {
+        int64_t blobs = 0, free = 0, file_only = 0, doubled = 0;
+    };
+    RamCopyState ram_copy_state() const;
+    /// moex (PORT_AUDIT_ALL §6): the RAM copy's invariants walked over every expert and blob, and a sample of RAM blobs hashed
+    /// against their experts' load-time hashes - one stderr line (STRATA_X_TIER_CHECK=1 calls it after each request; between
+    /// requests only)
+    void tier_check() const;
 
     struct Impl;   ///< internal (src/x/engine_impl.hpp): opaque here
 

@@ -1161,6 +1161,19 @@ Engine::~Engine() = default;
 
 const Hparams& Engine::hparams() const { return p_->hp; }
 
+void Engine::tier_check() const { p_->tier_check(); }   // (moex, PORT_AUDIT_ALL §6)
+
+Engine::RamCopyState Engine::ram_copy_state() const {   // (moex, PORT_AUDIT_ALL §6)
+    const Impl& m = *p_;
+    RamCopyState r;
+    const int64_t NE = m.hp.n_expert;
+    if (!m.arena || m.ram_off.size() < (size_t) (m.n_xl * NE) || m.resident.size() < (size_t) (m.n_xl * NE)) return r;
+    r.blobs = m.ram_blobs_plan;
+    r.free = (int64_t) m.xpool.size();
+    m.ram_counts(r.doubled, r.file_only);   // (the check's rule)
+    return r;
+}
+
 const EngineStats& Engine::stats() const {
     Impl& m = *p_;
     EngineStats& s = m.st_sum;
@@ -1188,6 +1201,14 @@ const EngineStats& Engine::stats() const {
         s.ms_ssd_wait += x.ms_ssd_wait;
         s.swaps += x.swaps;
         s.fills += x.fills;
+        s.ram_take_swap += x.ram_take_swap;   // (moex, PORT_AUDIT_ALL §6: the RAM copy's bookkeeping)
+        s.ram_take_grow += x.ram_take_grow;
+        s.ram_give += x.ram_give;
+        s.ram_recycled += x.ram_recycled;
+        s.ram_file_swap += x.ram_file_swap;
+        s.ram_file_grow += x.ram_file_grow;
+        s.ram_fallback += x.ram_fallback;
+        s.ram_wait += x.ram_wait;
         s.slots += x.slots;
         s.streamed += x.streamed;
         s.ms_prefill_moe += x.ms_prefill_moe;

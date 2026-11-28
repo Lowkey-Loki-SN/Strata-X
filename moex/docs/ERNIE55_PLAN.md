@@ -495,25 +495,27 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
   20 applied: on the FP8 reference's own distributions (the KLD base, 3,071 positions, T 1.0) the 0.95 nucleus is wider
   than 20 tokens at 21.0% of positions and wider than 64 at 12.0% (median 2, 90th percentile 89, 99th 818); the total
   variation from top_p 0.95 over the whole vocabulary 0.042 at top_k 20, 0.023 at the widest list (64).
-  - 2026-11-25 night (the user: "correct and matching release"): the whole vocabulary's nucleus in the shared sampler
-    (DSV41_BACKLOG #56), so top_k 0 with top_p < 1 samples as vLLM does - softmax(s / T) over every token (temperature first:
-    the engine now orders ERNIE's sampling as DeepSeek-V4.1's, temp_first), the smallest set of the likeliest tokens holding
-    top_p, the draw inside it. Each row's cut is a key from a radix select (sampler_nuc_max_kernel, sampler_nuc_kernel<0..4>:
-    four passes of 8 key bits over the spans the split Gumbel-max uses, each span's histogram of the weights exp((s - max) / T)
-    as 40-bit fixed point in warp-private 32-bit parts), then the split Gumbel-max skips the ids below it. Integer sums, so a
-    row's cut is its logits' alone: a verify window's rows draw what single steps would. sampler_parity: frequencies equal HF
+  - 2026-11-25 night (the user's aim: correct, and matching the release): the whole vocabulary's nucleus in the shared
+    sampler (DSV41_BACKLOG #56), so top_k 0 with top_p < 1 samples as vLLM does - softmax(s / T) over every token
+    (temperature first: the engine now orders ERNIE's sampling as DeepSeek-V4.1's, temp_first), the smallest set of the
+    likeliest tokens holding top_p, the draw inside it. Each row's cut is a key from a radix select
+    (sampler_nuc_max_kernel, sampler_nuc_kernel<0..4>: four passes of 8 key bits over the spans the split Gumbel-max
+    uses, each span's histogram of the weights exp((s - max) / T) as 40-bit fixed point in warp-private 32-bit parts),
+    then the split Gumbel-max skips the ids below it. Integer sums, so a row's cut is its logits' alone: a verify
+    window's rows draw what single steps would. sampler_parity: frequencies equal HF
     top_p's in both orders (227 / 210 tokens kept on a flat row, total variation 0.012 / 0.011 over 204,800 draws, none
     outside), 8-row windows = single steps, at 129,280 tokens every row's pick = the host's nucleus + Gumbel-max (0 of 32
     rows, nuclei of ~46,600 tokens); the top_p 1 path's draws unchanged. One row at 201,216 tokens: 87 us (a narrow nucleus)
     to 157 us (a third of the vocabulary kept), against the 64-token list's 139-152 us. strata-ernie55.json's `sampling` has
     no top_k now (T 1.0, top_p 0.95: the family's, the release's). STRATA_FULL_NUCLEUS=0: the 64-token list, as before.
-- **The prompt as the release's server builds it** (2026-11-25, night; the user: "fix all four"). A side-by-side of the
-  server's whole prompt path - the conversion, the #537 marking of every special token's text inside a message, the
-  template, the unmarking - against encoding_ernie.py's segments (the same text, and a special token at the same places:
-  encode_segments makes one only where the renderer wrote one, and joins the ordinary text between them as our encode
-  does, so the ids are the same) found four differences, now gone: (1) a past call's arguments were sorted by Jinja's
-  case-folding `sort` (`a_b` before `aB`, `Path` last; the encoder's `sorted()` is case-sensitive) - the template sorts
-  case-sensitively; (2) an assistant's reasoning written inline (`<ernie:think>R</ernie:think>answer`, no reasoning field)
+- **The prompt as the release's server builds it** (2026-11-25, night; all four fixed at the user's word). A
+  side-by-side of the server's whole prompt path - the conversion, the #537 marking of every special token's text inside
+  a message, the template, the unmarking - against encoding_ernie.py's segments (the same text, and a special token at
+  the same places: encode_segments makes one only where the renderer wrote one, and joins the ordinary text between them
+  as our encode does, so the ids are the same) found four differences, now gone: (1) a past call's arguments were sorted
+  by Jinja's case-folding `sort` (`a_b` before `aB`, `Path` last; the encoder's `sorted()` is case-sensitive) - the
+  template sorts case-sensitively; (2) an assistant's reasoning written inline (`<ernie:think>R</ernie:think>answer`, no
+  reasoning field)
   was marked before the template could split it, so the turn became an empty think block and the tags as text -
   Dialect.think_split now splits it before the marking, as the encoder does (the first close tag, the last open tag before
   it, the content after the last close tag; a reasoning field that is a string, even empty, keeps it whole); (3) a past
@@ -525,7 +527,7 @@ The GPU phases (P3, P4's KLD on the engine, P6) need the user's server stopped; 
   these four): 18 OK in both venvs; the serve suite 872 OK (14 skipped). Matching before and after: the agent loop's 25
   special tokens, tags quoted in user, tool and argument text, the tool list's and nested values' JSON, late system and
   developer messages, the efforts (max reads as the release's high; vLLM's renderer would refuse max).
-- **Queued for later** (the user, 2026-11-25: "we can do without it for now"): decode's remaining levers, each ~1-2% and 1-2 h -
+- **Queued for later** (the user, 2026-11-25: deferred): decode's remaining levers, each ~1-2% and 1-2 h -
   a free-order FP8 GEMV (16 B loads; ~+2%: fp8_free_bench in the hill-climb's notes), the ~25 small kernels a layer fused,
   the CPU pool's gate/up -> down handoff (~40 us a layer); ERNIE's DSpark drafter (not ported; measured offline: greedy
   +6-11% on mixed text, +28-36% on code and math, a loss on prose - the DSpark item above).
@@ -620,12 +622,12 @@ and about the set's recipe. Every number below came from a run that night; the t
   mean NLL 2.649 / 2.486 / 2.309 (perplexity 14.1 / 12.0 / 10.1): no plateau or rise to 48K. With the passphrases found at
   50% and 95% of a 240,943-token document (above), the engine and the reference are not where the stall comes from; what
   this box cannot test is Baidu's own model and serving.
-- **No thinking budget** (2026-11-27, the user: "We already have the loop guard so why cap? Let the model think free"): the
-  run config sets no `reasoning_budget_tokens`, so a thinking runs as long as the model takes it; what ends a cycle is the
-  loop guard ("wrap", at its look: 2,560 and 3,072 generated tokens on the real loop). A budget of 32,768 was in the
-  template for an hour that morning (public b0867eb8) and is gone again. For the record, from that hour: the dev server's
-  log of 774 ERNIE-5.5 requests had generated tokens a reply median 376, 99th percentile 4,896, the longest normal one
-  12,782, and only the stalled one past 16,384.
+- **No thinking budget** (2026-11-27, the user's instruction: no cap, since the loop guard ends a thinking caught in a
+  loop): the run config sets no `reasoning_budget_tokens`, so a thinking runs as long as the model takes it; what ends a
+  cycle is the loop guard ("wrap", at its look: 2,560 and 3,072 generated tokens on the real loop). A budget of 32,768
+  was in the template for an hour that morning (public b0867eb8) and is gone again. For the record, from that hour: the
+  dev server's log of 774 ERNIE-5.5 requests had generated tokens a reply median 376, 99th percentile 4,896, the longest
+  normal one 12,782, and only the stalled one past 16,384.
 - **A stall in another order** (2026-11-27 afternoon): the guard's passage count catches a cycle only when a 12-word
   passage repeats - the stall's six short lines in their order, at 1,024 generated tokens on a scripted engine with this
   family's template and tokenizer, but the same lines shuffled, or shuffled with a new line every 20, ran 16K tokens with
@@ -714,3 +716,9 @@ and about the set's recipe. Every number below came from a run that night; the t
   (the slot cap alone, simulated on the IQ3_S / IQ4_XS set with STRATA_X_STAGE_SLOTS, had cost 2.2%: the larger experts and
   the spill add the rest). 5% nearer the reference for 7.6% of decode and the RAM's margin: not better on this box. The
   IQ3_S / IQ4_XS set stays the run configs' set; the upgrade's files are kept for the user's choice.
+- **The long-session slowdown** (2026-11-27 evening, the live server's serve lines and the kernel's counters): with the
+  IQ3_S / IQ4_XS set the CPU pool fell from 52 to ~40 GB/s and the VRAM tier's swap rounds rose from 0.2-0.7 to ~3.4 ms
+  a token, while the engine re-read 27-66K GGUF pages a second; the counters point at the RAM copy's exchange blobs
+  running out and experts left only in the file (the cause not yet proven). The shared tier code's opt-in fix
+  (STRATA_X_RECYCLE=1 in a run config's env, not in the template until measured), its reviews and its runs:
+  PORT_AUDIT_ALL.md §6.

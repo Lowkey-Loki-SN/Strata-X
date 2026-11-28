@@ -516,8 +516,10 @@ bool Engine::Impl::hy4_retire_slots(Stage& g, int64_t new_n, std::string& err) {
                     xpool[best] = xpool.back();
                     xpool.pop_back();
                     ++to_blob;
+                    g.st.ram_take_grow++;   // (moex, PORT_AUDIT_ALL §6)
                 } else {
                     ++to_file;
+                    g.st.ram_file_grow++;
                 }
             } else {
                 ++kept;

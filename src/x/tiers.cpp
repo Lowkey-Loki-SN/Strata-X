@@ -45,7 +45,28 @@ uint64_t meminfo_kb(const char* key) {
     }
     return v;
 }
+
+/// moex (PORT_AUDIT_ALL §6, STRATA_X_RECYCLE=1, opt-in): the RAM copy keeps its blobs through a session - an expert in VRAM
+/// that still holds a RAM blob gives it back to the pool (the lend region's planned slots and the round's victims excepted),
+/// a swap with no free blob may wait for one a swap in flight owes it, and a victim of an expert read from the file takes a
+/// blob only from the pool's surplus.  Unset or 0: the bookkeeping as before.  The same bytes and kernels for every expert;
+/// which experts the GPU computes, and which the CPU reads from the file rather than RAM, move with it.  An engine with
+/// DeepSeek-V4.1's SSD tier (rio) takes none of these paths: its records have their own (§44).
+bool recycle_on() {
+    static const bool on = [] {
+        const char* e = std::getenv("STRATA_X_RECYCLE");
+        return e && e[0] == '1';
+    }();
+    return on;
+}
 }  // namespace
+
+/// ... and where it applies: a pinned RAM copy whose plan holds the whole complement (not Strata's "what fits", nor an
+/// arena of exchange blobs only: there the RAM holds some experts or none, and which keep a blob is a policy of its own),
+/// exchange blobs to recycle into, and no SSD tier (DeepSeek-V4.1's records keep DSV41_PLAN §44's rules)
+static bool recycling(const Engine::Impl& m) {
+    return recycle_on() && m.arena && m.arena_pinned && !m.rio && m.ram_whole && m.opt.exchange_blobs > 0;
+}
 
 /// The routed experts' formats and their place in the GGUF mapping - the file tier every expert has.  The RAM copy and the
 /// VRAM slots are built by init_cache, once the slots are sized.
@@ -476,9 +497,11 @@ bool Engine::Impl::init_cache(std::string& err) {
     const uint64_t budget = opt.experts_in_ram == 0 ? 0 : avail > headroom ? avail - headroom : 0;
     std::vector<char> in_ram((size_t) NK, 0);
     uint64_t want_ram = 0;
-    bool what_fits = false, lend_kept_all = true;
+    bool what_fits = false, lend_kept_all = true, whole = false;
     int64_t lend_kept = 0;
+    lend_slot.assign((size_t) n_slots, 0);   // (moex, PORT_AUDIT_ALL §6: the lend region's slots, below)
     if (budget > 0 && comp + xbytes <= budget) {
+        whole = true;   // (moex, PORT_AUDIT_ALL §6: the plan holds every expert outside VRAM)
         for (int64_t key = hp.n_dense * NE; key < NKX; ++key)
             if (plan_slot[(size_t) key] < 0) in_ram[(size_t) key] = 1;
         want_ram = comp;
@@ -506,6 +529,7 @@ bool Engine::Impl::init_cache(std::string& err) {
                 in_ram[(size_t) key] = 1;
                 want_ram += b;
                 ++lend_kept;
+                lend_slot[(size_t) slot] = 1;
             }
         }
     } else if (budget > xbytes) {   // Strata's "what fits": the hottest of the complement by the profile, the rest from the files
@@ -554,6 +578,9 @@ bool Engine::Impl::init_cache(std::string& err) {
         } else {
             arena_pinned = arena->registered_bytes >= ram_bytes;
             for (int64_t i = 0; i < opt.exchange_blobs && xbytes > 0; ++i) xpool.push_back({(int64_t) (x0 + (uint64_t) i * xblob), xblob});
+            ram_blobs_plan = (int64_t) std::count_if(ram_off.begin(), ram_off.end(), [](int64_t o) { return o >= 0; }) +
+                             (int64_t) xpool.size();   // (moex, PORT_AUDIT_ALL §6: the check's count)
+            ram_whole = whole;
             if (opt.verbose)
                 fprintf(stderr, "strata-x: RAM copy %.2f GiB reserved in %.1f s (%s): MemAvailable %.1f GiB, headroom %.0f GiB\n",
                         ram_bytes / 1073741824.0, ms_since(tr) / 1000.0, arena->note.c_str(), avail / 1073741824.0, head_gib);
@@ -963,6 +990,7 @@ void Engine::Impl::maintain_cache() {
     const int64_t NE = hp.n_expert;
     EngineStats& ust = stages[0]->st;   // (moex, §35: where the upkeep's time goes)
     auto tp = clk::now();
+    sync_fills_gap = 0;   // (moex, PORT_AUDIT_ALL §6: the synchronous fills this gap between windows has done)
     finalize_swaps(false);
     ust.ms_up_final += ms_since(tp);
     tp = clk::now();
@@ -1219,6 +1247,7 @@ void Engine::Impl::finalize_swaps(bool wait) {
                 owner[(size_t) ps.slot] = -1;
                 res_dirty = true;
                 const int r = issue_incoming(*this, ps);
+                if (r != 0) ++sync_fills_gap;   // (moex, §6: a synchronous fill from the file in this gap, done or failed)
                 if (r == 0) {   // the incoming copy is in flight now
                     again = again || wait;
                     ++i;
@@ -1248,6 +1277,7 @@ void Engine::Impl::finalize_swaps(bool wait) {
                         ram_off[(size_t) ps.key] = -1;
                         ram_cap[(size_t) ps.key] = 0;
                         xpool.push_back({ps.ret, ps.ret_cap});
+                        stages[(size_t) ps.di]->st.ram_give++;
                     }
                 }
                 res_dirty = true;
@@ -1259,7 +1289,151 @@ void Engine::Impl::finalize_swaps(bool wait) {
     }
 }
 
+/// moex (PORT_AUDIT_ALL §6): a slot where the plan gave its expert a RAM copy for the prompt path's lend region, and still a
+/// slot of the tier (the caches' growth, STRATA_HY4_KV_GROW, takes the top ones; their release gives them back)
+bool Engine::Impl::in_lend_cover(int32_t slot) const {
+    if (slot < 0 || (size_t) slot >= lend_slot.size() || !lend_slot[(size_t) slot]) return false;
+    const Stage& g = *stages[(size_t) slot_dev[(size_t) slot]];
+    return slot - g.slot_base < g.n_slots;
+}
+
+/// moex (PORT_AUDIT_ALL §6, STRATA_X_RECYCLE=1): between windows, every expert VRAM holds outside the lend region's slots gives
+/// back the RAM blob it still holds - a first-use fill's or a refill's copy from it has landed (the slot check after them
+/// synced the compute stream), and a swap in flight is left alone (its slot or its expert pending).  `spare` [slot]: the
+/// round's planned victims - a victim that keeps its RAM copy leaves VRAM at once, with no copy out
+void Engine::Impl::recycle_doubles(const std::vector<char>& spare) {
+    if (!recycling(*this) || ram_off.empty()) return;
+    std::vector<int32_t> doubles;   // (slot) - an expert VRAM holds that also holds a RAM blob, no copy of it in flight
+    std::vector<char> on_gpu(stages.size(), 0);
+    for (auto& gp : stages) {
+        const Stage& g = *gp;
+        for (int64_t k = 0; k < g.n_slots; ++k) {
+            const int32_t slot = (int32_t) (g.slot_base + k);
+            const int32_t key = owner[(size_t) slot];
+            if (key < 0 || resident[(size_t) key] != slot || ram_off[(size_t) key] < 0) continue;
+            if (slot_pending[(size_t) slot] || key_pending[(size_t) key] || in_lend_cover(slot)) continue;
+            if ((size_t) slot < spare.size() && spare[(size_t) slot]) continue;
+            doubles.push_back(slot);
+            on_gpu[(size_t) g.di] = 1;
+        }
+    }
+    if (doubles.empty()) return;
+    // a first-use fill or a refill copies from the RAM blob on its GPU's compute stream: every such copy lands before a blob
+    // goes back (the slot check after them synced it on the normal path; an error path may not have).  A GPU whose stream
+    // failed keeps the error for the window's own check, and nothing is released
+    for (auto& gp : stages) {
+        if (!on_gpu[(size_t) gp->di]) continue;
+        set_dev(gp->dev);
+        if (const cudaError_t e = cudaStreamSynchronize(gp->s); e != cudaSuccess) {
+            fprintf(stderr, "strata-x: the RAM copy's sweep: GPU %d's stream failed (%s); no blob released\n", gp->dev,
+                    cudaGetErrorString(e));
+            return;
+        }
+    }
+    for (const int32_t slot : doubles) {
+        const int32_t key = owner[(size_t) slot];
+        xpool.push_back({ram_off[(size_t) key], ram_cap[(size_t) key]});
+        ram_off[(size_t) key] = -1;
+        ram_cap[(size_t) key] = 0;
+        stages[(size_t) slot_dev[(size_t) slot]]->st.ram_recycled++;
+    }
+    res_dirty = true;
+}
+
+/// moex (PORT_AUDIT_ALL §6): experts in VRAM that also hold a RAM blob; experts in neither (the SSD tier's served there)
+void Engine::Impl::ram_counts(int64_t& doubled, int64_t& file_only) const {
+    doubled = file_only = 0;
+    const int64_t NE = hp.n_expert;
+    if (ram_off.size() < (size_t) (n_xl * NE) || resident.size() < (size_t) (n_xl * NE)) return;
+    for (int64_t key = hp.n_dense * NE; key < n_xl * NE; ++key) {
+        const bool vram = resident[(size_t) key] >= 0, ram = ram_off[(size_t) key] >= 0;
+        file_only += !vram && !ram && !on_ssd(key);
+        doubled += vram && ram;
+    }
+}
+
+/// moex (PORT_AUDIT_ALL §6, STRATA_X_TIER_CHECK=1): between requests - every arena blob one expert's or the pool's, none twice,
+/// none outside the arena, none lost (the plan's count); every live slot's expert resident there and every resident expert's
+/// slot its own (a slot with a copy in flight left out); a rotating sample of 32 RAM blobs hashed against their experts'
+/// load-time hashes (khash, the slot check's values) - one line
+void Engine::Impl::tier_check() const {
+    if (!arena || ram_off.empty()) return;
+    const auto t0 = clk::now();
+    const int64_t NE = hp.n_expert;
+    std::vector<std::pair<int64_t, uint64_t>> blobs;   // (offset, capacity): every blob held, free or in flight
+    int64_t owned = 0, small = 0;
+    for (size_t key = 0; key < ram_off.size(); ++key) {
+        if (ram_off[key] < 0) continue;
+        blobs.push_back({ram_off[key], ram_cap[key]});
+        ++owned;
+        if (ram_cap[key] < L[key / (size_t) NE].fmt.bytes) ++small;   // (a blob too small for its expert)
+    }
+    for (const auto& b : xpool) blobs.push_back({b.first, b.second});
+    int64_t inflight = 0;   // a swap's victim still being copied out holds its exchange blob (phase 0)
+    for (const auto& ps : pending)
+        if (ps.phase == 0 && ps.xb >= 0) {
+            blobs.push_back({ps.xb, ps.xb_cap});
+            ++inflight;
+        }
+    std::sort(blobs.begin(), blobs.end());
+    int64_t twice = 0, outside = 0;   // overlapping ranges (a blob held twice among them); past the arena's end
+    for (size_t i = 0; i < blobs.size(); ++i) {
+        if (blobs[i].first < 0 || (uint64_t) blobs[i].first + blobs[i].second > ram_bytes) ++outside;
+        if (i > 0 && (uint64_t) blobs[i - 1].first + blobs[i - 1].second > (uint64_t) blobs[i].first) ++twice;
+    }
+    int64_t bad_slot = 0, bad_key = 0, doubled = 0, file_only = 0;   // slots, experts out of step with the other table
+    for (const auto& gp : stages) {
+        const Stage& g = *gp;
+        for (int64_t k = 0; k < g.n_slots; ++k) {
+            const int32_t slot = (int32_t) (g.slot_base + k), key = owner[(size_t) slot];
+            if (key >= 0 && !slot_pending[(size_t) slot] && resident[(size_t) key] != slot) ++bad_slot;
+        }
+    }
+    for (int64_t key = hp.n_dense * NE; key < n_xl * NE; ++key) {
+        const int32_t s = resident[(size_t) key];
+        if (s >= 0 && (owner[(size_t) s] != (int32_t) key)) ++bad_key;
+    }
+    ram_counts(doubled, file_only);
+    // the sample: from a rotating start, the next 32 experts holding a RAM blob and their load-time hashes
+    static int64_t next = 0;
+    int hashed = 0, bad_hash = 0;
+    std::string first_bad;
+    const int64_t K0 = hp.n_dense * NE, K1 = n_xl * NE, start = next;
+    for (int64_t i = 0; i < K1 - K0 && hashed < 32; ++i) {
+        const int64_t key = K0 + (start + i) % (K1 - K0);
+        if (ram_off[(size_t) key] < 0 || !khash_ok[(size_t) key]) continue;
+        const Layer& l = L[(size_t) (key / NE)];
+        const uint8_t* p = arena->data() + ram_off[(size_t) key];
+        const uint64_t h[3] = {slices_hash_host(p, l.sg), slices_hash_host(p + l.fmt.up_off, l.su),
+                               slices_hash_host(p + l.fmt.down_off, l.sd)};
+        ++hashed;
+        if (h[0] != khash[(size_t) key * 3] || h[1] != khash[(size_t) key * 3 + 1] || h[2] != khash[(size_t) key * 3 + 2]) {
+            ++bad_hash;
+            if (first_bad.empty())
+                first_bad = " (layer " + std::to_string(key / NE) + " expert " + std::to_string(key % NE) + ")";
+        }
+        next = (key - K0 + 1) % (K1 - K0);
+    }
+    const int64_t total = owned + (int64_t) xpool.size() + inflight;
+    const bool ok = twice == 0 && outside == 0 && small == 0 && total == ram_blobs_plan && bad_slot == 0 && bad_key == 0 &&
+                    bad_hash == 0;
+    fprintf(stderr, "strata-x: the tier check: %s in %.0f ms - %lld blobs = %lld held + %zu free + %lld in flight (the plan's %lld), "
+                    "%lld overlapping, %lld outside the arena, %lld too small for their expert; %lld slots and %lld experts out of step "
+                    "with the other residency table; %lld doubled, %lld only in the file; %d RAM blobs hashed, %d unlike their "
+                    "experts'%s\n", ok ? "OK" : "FAILED", ms_since(t0), (long long) total, (long long) owned, xpool.size(),
+            (long long) inflight, (long long) ram_blobs_plan, (long long) twice, (long long) outside, (long long) small,
+            (long long) bad_slot, (long long) bad_key, (long long) doubled, (long long) file_only, hashed, bad_hash, first_bad.c_str());
+}
+
 void Engine::Impl::swap_round() {
+    // moex (PORT_AUDIT_ALL §6, STRATA_X_RECYCLE=1): `owed` - the capacities of the blobs the swaps in flight give back when
+    // they land; a swap that finds no free blob may wait for one of them, one swap a blob (claimed), the rest fall back
+    const bool rec = recycling(*this);
+    std::vector<uint64_t> owed;
+    if (rec)
+        for (const PendingSwap& p : pending)
+            if (p.ret >= 0) owed.push_back(p.ret_cap);
+    int started = 0;
     const int64_t E = hp.n_expert;
     struct Cand {
         float gain;
@@ -1289,14 +1463,28 @@ void Engine::Impl::swap_round() {
     }
     const int budget = opt.adapt_swaps > 0 ? opt.adapt_swaps
                                            : std::clamp((int) (256.0 / ((double) slot_bytes / 1048576.0)), 8, 96);
-    if ((int) plan.size() > budget) {
-        std::partial_sort(plan.begin(), plan.begin() + budget, plan.end(),
+    const int keep = rec ? 2 * budget : budget;   // (moex, §6: a swap that waits does not take a place of the budget)
+    if ((int) plan.size() > keep) {
+        std::partial_sort(plan.begin(), plan.begin() + keep, plan.end(),
                           [](const Cand& a, const Cand& b) { return a.gain > b.gain; });
-        plan.resize((size_t) budget);
+        plan.resize((size_t) keep);
+    } else if (rec) {
+        std::sort(plan.begin(), plan.end(), [](const Cand& a, const Cand& b) { return a.gain > b.gain; });
+    }
+    // moex (§6): the doubles' blobs back to the pool, the planned victims' spared; and the pool's surplus - what it holds
+    // beyond a round's swaps and the plan's exchange blobs - the most a victim of an expert read from the file may take
+    const size_t reserve = std::max<size_t>((size_t) budget, (size_t) std::max(0, opt.exchange_blobs));
+    if (rec) {
+        std::vector<char> spare(owner.size(), 0);
+        for (const Cand& c : plan) spare[(size_t) c.slot] = 1;
+        recycle_doubles(spare);
     }
     std::vector<char> ordered(stages.size(), 0);
-    int sync_left = 8;   // an incoming expert read from the file is a synchronous fill
+    // an incoming expert read from the file is a synchronous fill: 8 a gap between windows - under STRATA_X_RECYCLE=1 (moex,
+    // §6) less those finalize_swaps just did for earlier rounds' file-read swaps whose victims took a blob
+    int sync_left = rec ? std::max(0, 8 - sync_fills_gap) : 8;
     for (const Cand& c : plan) {
+        if (rec && started >= budget) break;
         Stage& g = *stages[(size_t) slot_dev[(size_t) c.slot]];
         const int32_t key_in = (int32_t) (c.il * E + c.e), vkey = owner[(size_t) c.slot];
         const Src s_in = src(key_in);
@@ -1344,19 +1532,41 @@ void Engine::Impl::swap_round() {
             }
         }
         if (vkey >= 0 && ram_off[(size_t) vkey] < 0) {
-            // the victim exists only in VRAM: copy it out to an exchange blob first, while it stays resident (phase 0); with no
-            // exchange blob left it falls back to the file (it is still in the GGUF) and the incoming one keeps its RAM copy
+            // the victim exists only in VRAM: copy it out to an exchange blob first, while it stays resident (phase 0). With
+            // no exchange blob free, the victim falls back to the file (it is still in the GGUF) and the incoming one keeps its
+            // RAM copy.  Under STRATA_X_RECYCLE=1 (moex, PORT_AUDIT_ALL §6): such a swap first claims a blob a swap in flight
+            // owes (it waits for a later round), the fallback's double gives its blob back at the next round's sweep, and a
+            // victim of an expert read from the file takes a blob only from the pool's surplus - else its place in the file
             const uint64_t need = L[(size_t) c.il].fmt.bytes;
-            size_t best = xpool.size();   // the smallest free blob that holds the victim
+            size_t best = xpool.size(), fit = 0;   // the smallest free blob that holds the victim; how many hold it
             for (size_t i = 0; i < xpool.size(); ++i)
-                if (xpool[i].second >= need && (best == xpool.size() || xpool[i].second < xpool[best].second)) best = i;
-            if (best == xpool.size() || !arena_pinned) {
+                if (xpool[i].second >= need) {
+                    ++fit;
+                    if (best == xpool.size() || xpool[i].second < xpool[best].second) best = i;
+                }
+            const bool take = best < xpool.size() && arena_pinned && (!rec || s_in.pinned || fit > reserve);
+            if (!take) {
+                if (rec && s_in.pinned) {
+                    size_t pick = owed.size();   // the smallest owed blob that holds the victim
+                    for (size_t i = 0; i < owed.size(); ++i)
+                        if (owed[i] >= need && (pick == owed.size() || owed[i] < owed[pick])) pick = i;
+                    if (pick < owed.size()) {
+                        owed[pick] = owed.back();
+                        owed.pop_back();
+                        g.st.ram_wait++;
+                        continue;
+                    }
+                }
                 ps.ret = -1;
+                if (s_in.pinned) g.st.ram_fallback++;
+                else g.st.ram_file_swap++;
             } else {
+                if (rec && !s_in.pinned) --sync_left;   // (moex, §6: its synchronous fill comes when the copy out lands)
                 ps.xb = xpool[best].first;
                 ps.xb_cap = xpool[best].second;
                 xpool[best] = xpool.back();
                 xpool.pop_back();
+                g.st.ram_take_swap++;
                 ps.key_out = vkey;
                 ps.phase = 0;
                 if (!ordered[(size_t) g.di]) {
@@ -1372,6 +1582,8 @@ void Engine::Impl::swap_round() {
                 pending.push_back(ps);
                 g.st.swaps++;
                 g.st.fills++;
+                ++started;
+                if (ps.ret >= 0) owed.push_back(ps.ret_cap);
                 continue;
             }
         }
@@ -1391,11 +1603,14 @@ void Engine::Impl::swap_round() {
                 key_pending[(size_t) key_in] = 0;
             }
             cudaEventDestroy(ps.ev);
+            started += r > 0;
             continue;
         }
         pending.push_back(ps);
         g.st.swaps++;
         g.st.fills++;
+        ++started;
+        if (ps.ret >= 0) owed.push_back(ps.ret_cap);
     }
     for (auto& hv : heat) hv *= opt.adapt_decay;
 }

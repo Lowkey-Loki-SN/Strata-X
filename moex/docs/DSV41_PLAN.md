@@ -9,7 +9,8 @@ deep checkpoints, the drive's slow mode - read disturb, fixed by `refresh_pack.p
 §15 the audit of 2026-10-20 and Maya v1.1.16-17; §16 the q3q2u pack against the 217 GB one, and Maya v1.1.18-20; §17 a
 stop between layers (in the config) and layer-major prompt reads (exact, the cold 44K read 166.9 -> 125.3 s; off again after
 a cold 84K read from a reboot stalled behind it).
-DSV41_BACKLOG.md lists what is left. The history below is kept as it was written.
+DSV41_BACKLOG.md lists what is left. The history below is kept as it was written (the maintainer's quoted words
+paraphrased and a few local details generalized on 2026-11-28).
 
 **Status (2026-10-17 18:10): plan final; phase 0 passed all three gates (§9); phase 1 conversion running.**
 - The release is streamed from Hugging Face straight into the native pack by `moex/tools/dsv41/convert_pack.py`,
@@ -19,9 +20,10 @@ DSV41_BACKLOG.md lists what is left. The history below is kept as it was written
 - Where the pack goes:
   - experts and engram (498.8 GB) in `~/AI/Models/dsv41-1017/native` on ext4, leaving ~21 GB free on /;
   - the dense safetensors (~11.5 GB, read by the reference and `write_dense_gguf.py`) in
-    `~/AI/Models/dsv41-1017/dense`. They were on `/mnt/shared` (NTFS through FUSE) until 2026-10-18 evening, when the
-    user moved them there to repartition that drive; all 48 files' sizes and tensor counts were checked after the
-    move, and `native/manifest.json` now points there (the old copy is `manifest.json.bak-2026-10-18`).
+    `~/AI/Models/dsv41-1017/dense`. They were on an NTFS partition (through FUSE) until 2026-10-18 evening, when the
+    user moved them there so that the partition's drive could be repartitioned; all 48 files' sizes and tensor counts
+    were checked after the move, and `native/manifest.json` now points there (the old copy is
+    `manifest.json.bak-2026-10-18`).
   - the dense GGUF the engine loads (dense weights, the DSpark drafter, the engram projections) in
     `~/AI/Models/dsv41-1017/dsv41-1017-dense-q8_0-dsp-eg.gguf`.
 - Shards 3 (layer 0) and 43 (head) were checked with `verify_pack.py` against fresh range reads: records 0, 68 and
@@ -2664,6 +2666,10 @@ added): the slow mode's floor (1,000 a busy second at 1 ms) holds; a decode's bu
 corrected; DSV41_BACKLOG #93 can gain at most ~0.14 ms a token); with the spread (§40) 2 MiB pages measured 70.80 GB/s against
 69.82 - huge pages stay off for the compaction freezes, not for speed.
 
+**2026-11-27:** a loss on the general path too - the fallback's doubles kept their RAM blobs, and nothing gave them back -
+and its opt-in fix in the shared tier code (STRATA_X_RECYCLE=1): PORT_AUDIT_ALL.md §6. An engine with the SSD tier keeps
+this section's rules unchanged.
+
 ## 45. The lent slots' refill from the SSD cache, queued (2026-10-22)
 
 A prompt's refill copied each lent expert without a RAM copy through `fill_slot`, which synced the stream before and after it -
@@ -3135,9 +3141,9 @@ change the rate is fewer bytes read an hour: the RAM tier (§10).
 
 ## 56. Pictures by reference, the drive's lulls, layers 24-36 on their candidates: the plan (2026-10-27)
 
-**Why.** The user: "Any potential speedup/optimisation without quality loss is welcome! Proceed with the engine change along
-with the one you proposed earlier that can mitigate slowdowns. Plan thoroughly first". Three changes, each exact (the same
-tokens and logits) or outside the model's arithmetic, each opt-in or automatic only where the old path stays the fallback.
+**Why.** The user: speed-ups without a quality loss, with the slowdown mitigation proposed earlier, planned first. Three
+changes, each exact (the same tokens and logits) or outside the model's arithmetic, each opt-in or automatic only where
+the old path stays the fallback.
 
 **A. A request's pictures by reference (GENI manifests).** Since 2026-10-27 dsh keeps up to 256 MiB of pictures a request
 (the llamacpp provider's `maxRequestImageBytes`; under dsh's 20 MiB default it turned the oldest picture into text at each
@@ -3243,8 +3249,8 @@ results; B3/B4 only on B2's evidence.
 
 **Why.** The engine holds one conversation's state: a request from another conversation (a second dsh session, a subagent,
 a client's side request such as a title) overwrites the attention state and deletes the first one's checkpoints, and the
-first one's next request reads it again from its root - 15-60+ minutes at the user's 200-600K. The user: "parking is what I
-would benefit from atm ... robust plan first, then build".
+first one's next request reads it again from its root - 15-60+ minutes at the 200-600K contexts in use. Parking was the
+user's priority, with the plan made before the build.
 
 **What a conversation's state is** (strata-glm, DeepSeek-V4 / V4.1; read from glm_session.cpp, glm_dsv41.cpp, glm_dsv4.cpp):
 - the positional caches - on V4.1 the KV sources' compressed rows and index keys (layers 2, 8, 14 at ratio 2, layer 20 at
@@ -3297,7 +3303,7 @@ them); the default (0: off) is today's engine byte for byte.
 
 ## 58. ISTA-DASLab's GSQ-RCO IQ2_XXS as a second pack: IQ1_M in the engine (2026-10-29)
 
-**Why** (the user, 2026-10-29): "Download the IQ2_XXS quant. Although I lose quality, it'll be my cheap day-to-day driver" -
+**Why** (the user, 2026-10-29): the IQ2_XXS quant as a cheaper day-to-day driver, at some cost in quality -
 §51's lower-bit build of the same series (2.00 bpw; mainline's KL 0.170 against IQ2_XS's 0.107), which nearly fits this
 box's VRAM + RAM copy + SSD cache (§51's estimate on 2026-10-27: ~21-23.5 tok/s at 595K against q3q2u's 15.8, ~16 GB of it
 on the drive). q3q2u stays the quality pack; `run-deepseek-v4.1-flash-iq2xxs.sh` / `strata-dsv41-iq2xxs.json` (the q3q2u
@@ -3331,10 +3337,10 @@ window 2 left to try (DSV41_BACKLOG #123).
 
 ## 59. Every speed item of the audit of 2026-10-29 and the backlog: the plan (2026-10-29)
 
-**The goal (the user, 2026-10-29):** "try EVERYTHING (from the audit and our backlogs) but keep the tests minimal avoiding
-redundancy". Each item opt-in (`STRATA_DSV41_*`), the default path byte for byte as before; none that changes the output
-beyond rounding. Left out: the lossy ones (#10), rewritten model files (#111, #110), backlog #53, the driver patch (#119),
-the hardware levers (§10), the rows that are not speed (server, tools, robustness).
+**The goal (the user, 2026-10-29):** every item from the audit and the backlogs tried, with minimal tests and no
+redundant ones. Each item opt-in (`STRATA_DSV41_*`), the default path byte for byte as before; none that changes the
+output beyond rounding. Left out: the lossy ones (#10), rewritten model files (#111, #110), backlog #53, the driver
+patch (#119), the hardware levers (§10), the rows that are not speed (server, tools, robustness).
 
 **Prefill (exact unless marked):**
 
@@ -3370,9 +3376,9 @@ all off: equal bits pass them together, a difference is bisected; (2) one KLD ru
 
 **Results (2026-10-29).** Built, each opt-in: P1 `LAST_RING`, P2 `IDX32`, P3 `CAND_STAGE`, P5 `DEEP_AHEAD`, P6 `KEEP_SPREAD`,
 P7 `LM_SPLIT`, P15 `FIRST_AHEAD` (N tokens and up; 1 = 2048), and the episode line (the drive's temperature, the MB written
-and the pages swapped out over the 10 s before). Not built: P4 and P14 (rounding only: the user's "0 regression in quality"),
-P11 (the tails' ungated pass costs little: ~5-9 GB an hour), P13 (the page cache already takes a call's repeated engram rows),
-P12 (left: DSV41_BACKLOG #123); P8-P10, P16 and the decode items are DSV41_BACKLOG #121-#123.
+and the pages swapped out over the 10 s before). Not built: P4 and P14 (rounding only: the user's rule of no quality
+regression), P11 (the tails' ungated pass costs little: ~5-9 GB an hour), P13 (the page cache already takes a call's
+repeated engram rows), P12 (left: DSV41_BACKLOG #123); P8-P10, P16 and the decode items are DSV41_BACKLOG #121-#123.
 - **Exact** (`first_bits.py`; the installed engine 566a1b1b against the dev build, every switch on): the 4,013-token read's
   first-token logits and tokens d2f4cc8962327208 (all off: the same); a 70,013-token read with its checkpoint cut at 65,536
   d935a9829c04b0e2 and a request resumed at that cut 6609fd30ff25518d - both the installed engine's. P2's kernel
@@ -3401,7 +3407,7 @@ P12 (left: DSV41_BACKLOG #123); P8-P10, P16 and the decode items are DSV41_BACKL
 
 ## 60. The thinking's loop guard and rows of numbers (2026-10-30)
 
-**What happened** (the user, 2026-10-30: "IQ2_XXS got cut off again", then "I don't see any looping"): a reply on the IQ2_XXS
+**What happened** (the user, 2026-10-30: an IQ2_XXS reply cut off again, with no loop seen): a reply on the IQ2_XXS
 pack (a 60,252-token prompt, 60,218 of it reused) ended as `"length"` after 4,608 tokens of thinking. The reasoning look
 (`"reasoning_loop_recovery": "stop"`, in strata-dsv41.json since 2026-10-19) read 0.271 at its ninth look, against its 0.25,
 and the server's #530 line followed ("the reply reached max tokens while still thinking"), which read as max tokens. That
@@ -3508,7 +3514,7 @@ here: #10, same top -1.03 points with the bias), the 2-bit experts, the thinking
 
 ## 62. q3q2u as fast as it goes, nothing lossy: the round of 2026-10-30
 
-**The goal** (the user, 2026-10-30): "Let's make the reliable quant run as fast as possible WITHOUT quality regressions" -
+**The goal** (the user, 2026-10-30): the reliable quant at its best speed with no loss of quality -
 q3q2u stays the pack; every change exact (the same bits, or a different place to read the same bytes from), each opt-in and
 measured before the config takes it.
 
@@ -3644,8 +3650,8 @@ with `STRATA_DSV41_BF16_W=1` the same. `serve_smoke.py` with the config as it st
 after the request, the picture's 16.5 s, the BF16 line in the engine's log). Both DeepSeek configs: `--conversation-cache-mib
 4096`, `--lookup-window 8`, `STRATA_DSV41_BF16_W=1` (57 switches).
 
-**A fresh expert profile** (the user, 2026-10-30: "Sure, go ahead"): the frozen profile the VRAM tier and the RAM copy start from
-is the one learned on 2026-10-20 (12.6M decode routings). `strata-dsv41.json` now has `"expert_profile_save":
+**A fresh expert profile** (2026-10-30, with the user's OK): the frozen profile the VRAM tier and the RAM copy start
+from is the one learned on 2026-10-20 (12.6M decode routings). `strata-dsv41.json` now has `"expert_profile_save":
 "~/AI/Strata-X-data/dsv41-expert-profile-q3q2u-learned.txt"` and `"expert_profile_save_every": 10`: the engine writes
 what its tier learned every 10 minutes and at the stop (experts in VRAM first, then by this run's decode routings plus half the
 count it started from), and the next start begins from it ("expert profile: the learned one ... in place of the config's") -
@@ -4147,8 +4153,8 @@ and its test is gone; the parser tests pass (74 OK). A rule that is CommonMark's
 **Why** (the user, 2026-11-06): the native release had served the day through its own config (`strata-dsv41-native.json`,
 `run-deepseek-v4.1-flash-native.sh`, its own conversation folder and learned profile), at 11-12 tok/s from noon to 16h
 with the conversation up to 233K tokens, flat - the adaptive tier and the SSD cache learn while it runs, so a restart
-would not have made it faster. Then: "Let's delete q3q2u and download unsloth's Q2_K_XL or IQ3_XXS as a replacement. How
-fast do they run?", and on the answer below, "IQ3_XXS, go ahead".
+would not have made it faster. Then the user asked to delete q3q2u for one of Unsloth's Q2_K_XL or IQ3_XXS sets, with
+their speeds first, and on the answer below chose IQ3_XXS.
 
 **The two quants** (unsloth/DeepSeek-V4.1-Flash-1017-GGUF, their v3.1 quants, the repo's lastModified 2026-11-02; each
 GGUF's tensor headers read with range requests):
@@ -4226,9 +4232,9 @@ text's odds are from native's. Not measured yet: the decode speed (from the user
 ## 68. DeepSeek-V4.1 from a standard GGUF set, and the head-to-head against upstream Strata and Maya (2026-11-07 to 2026-11-09)
 
 **Why** (the user, 2026-11-07/08): Strata-X goes open source, so it should run DeepSeek-V4.1 straight from GGUF files anyone
-can get, and be compared with upstream Strata and Project Maya on the same files - "a fully unquantized comparison on the
-GGUF of the MXFP4 model". The set was made here from the release, with nothing downloaded ("We have the full model
-downloaded locally and we have llama.cpp for conversion").
+can get, and be compared with upstream Strata and Project Maya on the same files - a comparison with no further
+quantization, on a GGUF of the MXFP4 model. The set was made here from the release, with nothing downloaded (the full
+model was on disk, and llama.cpp converts it).
 
 **The set** (`moex/tools/dsv41/gguf_convert.py`). It runs mainline llama.cpp's converter (7d7f0287,
 conversion/deepseek41.py: the FP8 weights dequantized to BF16 exactly, the experts' MXFP4 kept bit for bit) with two of
@@ -4282,7 +4288,7 @@ Its reads were paced at 50 MB/s while the server was busy.
 and the server makes that temp folder anew at every start, so every start dropped the last one's conversations. The
 identity now takes the manifest's lines and its weight files' stamps (glm_main.cpp; checks/serve_restart_e2e.py).
 
-**Deleted after verification** (the user: "delete something ONLY AFTER fully verifying that it's no longer needed"):
+**Deleted after verification** (the user's rule: nothing is deleted before it is verified to be no longer needed):
 - the UD-IQ3_XXS pack, 224 GB, at the user's word (strata-dsv41.json and run-deepseek-v4.1-flash.sh still name it:
   retired);
 - native/engram, 203 GB (rows identical, bit check, smoke).
@@ -4566,7 +4572,7 @@ read O_DIRECT and deduplicated, each row's 264 bytes from its one or two pages, 
 - The rows wait behind the expert reads on a full drive more than they wait for their own.
 - first_bits: fd18c30dd37d9486 with this path, FP8 and the background pinning (binary 77e08fbf).
 
-**The user's choice.** "Steady-state first": the start and the first read stay at parity (the warm fill before READY),
+**The user's choice: the steady state first.** The start and the first read stay at parity (the warm fill before READY),
 rather than a start of ~45 s that would slow the first read to ~78-83 s.
 
 **The daily config** (strata-dsv41-native.json, 2026-11-09; a backup is in Strata-X-data/*.bak-20261109):
@@ -4774,10 +4780,10 @@ One token 8-14% faster, windows 1.4-2.1x.
 **The first port lost the one-token gain, and how it was found.** As first ported the kernel kept two tests a weight in its
 inner loop - "is this row inside the matrix" and "is this column inside the window" - and decoded with the general function
 inlined; `fp8_gemv_bench` then showed one token at 23.3 us where the kernel before ran 23.4 (the prototype: 21.4). The
-user's reading of it ("revisit the port") was right. The body now computes all R rows with no test (a row past n_out gets a
-tile of zeros and its sums are not written), takes one token by `if constexpr`, and marks the blocks. The same review found
-the loader's bound one short: the general decode needs S >= 10, not 9 (at 9 an exponent-0 code's factor is 0.0, where
-`e4m3_val` gives a denormal) - no weight of this model is near it.
+user's reading that the port needed revisiting was right. The body now computes all R rows with no test (a row past
+n_out gets a tile of zeros and its sums are not written), takes one token by `if constexpr`, and marks the blocks. The
+same review found the loader's bound one short: the general decode needs S >= 10, not 9 (at 9 an exponent-0 code's
+factor is 0.0, where `e4m3_val` gives a denormal) - no weight of this model is near it.
 
 **What bounds the shape now.** A probe kernel that only copies the tiles (no product at all) takes 60-66% of the whole
 kernel's time: the global-to-shared copy is most of it. Reading each thread's values straight from global would skip that

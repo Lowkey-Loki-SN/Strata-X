@@ -190,3 +190,174 @@ Two findings, explained, not changed:
   disk with --resident-headroom-gib 20 (dee0294b); strata-mimo-mtp.json removed (no MiMo GGUF on disk has MTP blocks).
   tools/test_setup_engine_hash.py: its refusal tests asked GitHub for real and failed where the release has no such asset
   (52b142a7, the same on upstream's tree).
+
+## 6. The experts' RAM copy over a long session (2026-11-27): plan
+
+**Seen** (ERNIE-5.5's IQ3_S / IQ4_XS set, the live server's session of 2026-11-27, 132 replies; the engine's serve lines
+and the kernel's counters, never its outputs): the CPU pool fell from 52.4 GB/s on the first reply to ~40 GB/s on the
+rest (50-54 on every earlier run, the IQ3_XXS set's 504-request run included), the VRAM tier's swap rounds from 0.2-0.7
+ms a token to ~3.4, decode from 27.0 to ~24-25 tok/s, and the engine re-read 27-66K GGUF pages a second during decode
+(its cgroup's workingset_refault_file; 114-130 MiB/s from the drive) - against "decode reads nothing" when the plan
+holds every expert outside VRAM in RAM ("the complement 92.17 GiB in RAM, the lend region 199 experts (not all of it),
+96 exchange blobs; 0.00 GiB read from the GGUF when needed"). The first cache growth (STRATA_HY4_KV_GROW, 131,072
+positions) copied 16 VRAM-only experts out to exchange blobs; the second copied none and left 19 to the file: the 96
+blobs were gone.
+
+**The bookkeeping** (tiers.cpp and hy4.cpp write `ram_off` and `xpool`; prompt.cpp only reads them): a blob is taken by
+(a) a swap whose victim holds no RAM copy (phase 0: the victim copied out into it) and (b) the caches' growth copying a
+VRAM-only expert out; one is given back only when a swap's incoming expert lands holding a RAM blob (`ps.ret`). With
+none free, (c) the victim goes to the file and the incoming expert keeps its RAM blob - a double, a copy of an expert
+VRAM holds; first-use fills and refills from RAM make doubles too, and a swap whose victim has a RAM copy keeps the
+incoming one's (meant for the lend region's top slots, applied to every slot). Nothing released a double's blob, so each
+fallback (c) left one blob held by a copy nothing reads and one expert only in the file. Round 3's off arm (its A/B,
+below) shows the chain with 8 exchange blobs; with the default 96 the trigger is likely, not shown: a round issues up to
+~45 swaps (256 MiB of copies), each holding a blob until its incoming copy lands a window or two later, so a burst
+empties the pool for a moment and the fallback starts. DSV41_PLAN §44 found a loss on the SSD tier (96 blobs in ~35
+tokens) and fixed that path only (STRATA_DSV41_SWAP_CACHE). MiMo's sessions (section 5) kept all 96 free.
+
+**What must hold** (the check, step 1, tests the first and the third after every request):
+- every arena blob belongs to one expert or to the pool (or to a swap in flight), none to two, none lost: the plan's
+  count;
+- a blob goes to the pool only when no copy reads it any more (a swap's landed; a fill's or a refill's stream synced)
+  and between windows (the residency is republished before the next one reads a pointer) - by construction, not testable
+  after the fact;
+- the residency tables agree: every live slot's expert resident there, every resident expert's slot its own;
+- the tier keeps adapting: a swap waits only for a blob a swap in flight owes it, one waiting swap per owed blob in a
+  round; the rest fall back as before, and the fallback's doubles give their blobs back at the next round, so the blobs
+  in circulation grow to what the rounds use;
+- the sweep (step 2) never takes a copy from the lend region's planned slots while they are slots of the tier (an
+  exchange into one may, as before; a cache growth takes the top slots first, and after it a read lends slots outside
+  the plan, where a double keeps no RAM copy any more, so a lend streams and refills those experts from the file - in
+  round 3's A/B prompt reading was still faster with the switch, 269 against 237 tok/s);
+- the same bytes for every expert and the same kernels; with a fixed tier (--no-adaptive) none of the new paths runs.
+  With the adaptive tier, which experts the GPU computes, and which the CPU reads from the file rather than from RAM,
+  move - and with them the outputs' last bits: this CPU computes an expert from its RAM blob with the gathered AVX-2
+  kernel and one from the file mapping with ggml's dot (#152), as with any change of the tier (§44's wording);
+- off by default. With the switch, an engine with DeepSeek-V4.1's SSD tier, a RAM plan short of the whole complement
+  ("what fits", or exchange blobs only), no exchange blobs or no pinned arena runs the old bookkeeping unchanged.
+
+**Step 1, measure**: per request, a line with the blobs free, the experts only the file holds (the SSD tier's not
+counted), the doubles, and the events by cause - blobs taken by swaps and by growths, given back, doubles released, swap
+attempts that waited for an owed blob (a swap that waits again counts again); for want of a blob, the victims (the
+fallback) and the growths' experts sent to the file; the victims sent there in place of an expert read from it. It comes
+with the request's other lines (not under STRATA_X_QUIET=1, which the server sets with diagnostics off) and only from an
+engine with a RAM copy. `STRATA_X_TIER_CHECK=1` (off by default; it writes to the engine log, so it needs the run
+config's diagnostics on - with them off the server sets STRATA_X_QUIET=1 and drops the engine's stderr): after the
+request's lines, the invariants walked over every expert and blob and a rotating sample of 32 RAM blobs hashed against
+their experts' load-time hashes (the slot check's values); its line gives its own time - it runs after the reply, so the
+next request waits for it.
+
+**Step 2, the fix** (opt-in, `STRATA_X_RECYCLE=1` in a run config's env - not in the template until real use measures
+it; a default changes only with a measured gain, AGENTS.md):
+- (1) a swap whose victim exists only in VRAM and whose incoming expert has a RAM copy: with a blob free, the exchange
+  as before; with none, it claims a blob a swap in flight owes (one waiting swap per owed blob in a round, one that
+  holds the victim; each round plans again, in order of gain) and waits for a later round; with none to claim, the
+  fallback as before - whose double gives its blob back at the next sweep;
+- (2) the same victim when the incoming expert is read from the file: it takes a free blob only from the pool's surplus
+  (what the pool holds beyond the larger of a round's swap budget and the plan's exchange blobs; the free blobs counted
+  are those that hold the victim; such a take counts against the round's cap of 8 synchronous fills from the file, and
+  its fill, which comes when the copy out lands in a later gap, against that gap's - a soft bound: first-use fills from
+  the file are not counted, and two rounds' takes can land in one gap), and otherwise takes the incoming expert's place
+  in the file (the experts only in the file stay as many);
+- (3) the sweep: once a swap round has planned (every 4 tokens), every expert VRAM holds that also holds a RAM blob
+  gives the blob back - except in the lend region's planned slots, in a swap in flight, and among the round's planned
+  victims (a victim with a RAM copy leaves at once, with no copy out); the compute streams of the GPUs it releases on
+  are synced first, and a failed sync releases nothing and keeps the error for the window's own check;
+- (4) a round's budget counts the swaps that start, not those that wait;
+- (5) none of it runs with the SSD tier, a RAM plan short of the whole complement, no exchange blobs or no pinned arena.
+
+**Step 3, verify** (one GPU window): a scripted session on a test server (port 18234, the daily run config) shaped like
+the one that drained the pool - a long first read, many short turns with tool outputs, past 65K and 131K positions (two
+growths), a new conversation (the release) and again; the check after every request; every target that compiles
+tiers.cpp built.
+
+**Done, round 1 (2026-11-27, night).** The first version (a swap waited whenever no blob was free; a no-exchange swap's
+landing returned the incoming blob outside the lend slots; the SSD tier excluded key by key; on by default), A/B with
+moex/tools/ernie55/long_session.py, the daily run config at headroom 18, STRATA_X_TIER_CHECK=1, 26 turns an arm -
+229,989 prompt tokens, two cache growths and a new conversation. The check passed after all 52 requests: every blob one
+expert's or the pool's (17,446 and 17,664, the plans' counts), none held twice, no residency mismatch, 1,664 RAM blobs
+hashed equal to their experts' load-time hashes. Decode ran 22.6-35.1 tok/s with the fix off and 24.6-34.9 with it on -
+no difference beyond the run-to-run spread. The drain did not occur in either arm: no expert ever only in the file, the
+growths' slots held only lend-region doubles (96 + 93 and 96 + 94 "with RAM copies"), at least 51 of the 96 blobs free
+at every check (up to 45 more in flight). The replies were short (29-102 tokens, thinking off) and the lend regions
+larger (344 and 571 against the live run's 199): the test shows that version safe where waits were short, not the fix's
+gain, and the in-flight-burst cause stays unproven.
+
+**Round 2.** The two reviews of round 1 (the change-reviewer agent and the built-in code review, each without the
+author's analysis) found that its wait could stop the tier for good once no blob could come back - in "what fits" mode,
+after growths past the lend region and the pool (ERNIE grows in 65,536-position steps toward 1M), or with
+--exchange-blobs 0 - and smaller items (a stale map of the lend slots, waits taking the round's budget, the request line
+missing on replies under 64 tokens, a sweep that relied on the slot check's sync, the SSD tier's experts counted as
+file-only, claims here beyond the code). Round 2 waited only while a swap in flight owed a blob, sent a file-read
+expert's victim to the file always, and swept before the round planned. Its stress run (2026-11-27): the daily run
+config at headroom 20 with --exchange-blobs 8, so that the pool runs dry, STRATA_X_TIER_CHECK=1, the same 26 turns. The
+lend region held 102 experts; the first growth sent 100 experts to the file, the second 55 (38 copied out); the new
+conversation's release gave 190 slots back. The check passed after all 26 requests (17,114 blobs, none held twice, no
+residency mismatch, 832 RAM blobs hashed equal), and every request swapped (80-743 swaps). But before the first growth
+832-1,572 swap attempts a request waited on the 8 blobs in circulation, 49-54% of the routings ran in VRAM (the round-1
+A/B: 56-78%) and decode ran 21.5-26.5 tok/s; and after the release 191-222 blobs stayed free while 227 experts stayed
+only in the file for the rest of the run.
+
+**Round 3.** The reviews of round 2 found both: the waits held the blobs in circulation at what was in flight (any
+number of swaps waited on the same owed blob) and the file-read rule never used a free blob. And: the sweep took the RAM
+copies of the round's own victims, which then had to be copied out again; an arena of exchange blobs only was not
+excluded; the report put each check's verdict on the request before; a failed stream sync in the sweep was cleared
+silently; the sweep synced every GPU (at most the head's tail - the head took 0.1 ms a token in these runs - once every
+4 tokens; now only the GPUs it releases on); the line printed for engines without a RAM copy; the check's own time was
+not given; the docs claimed more than the code (the outputs' bits, the line under STRATA_X_QUIET); and the fix was on by
+default for every family with no measured gain - opt-in now, as §44's STRATA_DSV41_SWAP_CACHE was until measured.
+
+Round 3's A/B (2026-11-27): the same stress config at headroom 18 (at 20 the RAM plan missed the complement by ~0.5 GiB
+and fell to "what fits", where the switch is off by design), the switch on, then off, the same 26 turns - 229,989 prompt
+tokens an arm, the same prompts. The check passed after all 52 requests. With the switch on: 62 experts only in the file
+after the first request (69 fallbacks while the blobs in circulation grew) and 44 at the end, 8-66 blobs free, 56-84% of
+the routings in VRAM, the CPU pool 46.6-56.5 GB/s, decode 22.1-33.1 tok/s (28.5 over the run), prompt reading 269 tok/s,
+5,949 page refaults a second and 68.5 MiB/s from the drive, the session 915 s. With it off: 533 fallbacks in the first
+request, the experts only in the file 526 after it and 2,261 at the end, the doubles 1,137 rising to 2,743, no blob free
+from the second request on, the CPU pool falling from 50.0 to 23.4 GB/s, decode 18.3-30.2 tok/s (23.4 over the run),
+prompt reading 237 tok/s, 20,803 refaults a second and 125.6 MiB/s, the session 1,037 s. The off arm shows the live
+session's signs - the pool's GB/s falling, the GGUF read again and again - and their cause: with no blob free, every
+fallback left a double holding a blob and an expert only in the file. Eight exchange blobs make the pool run dry in the
+first request; the replies differ between the arms after the first tokens (greedy, but the CPU computes different
+experts, see "What must hold").
+
+**Round 4.** The reviews of round 3 (both: no high or medium finding) found: a file-read expert's take escaped the cap
+of synchronous fills from the file (after a release, a round's budget of them could land in one gap); the check's
+rotating sample skipped keys, and its tests compared start offsets only (no overlap, no capacity); every stats() call
+walked every expert (the bench loops' included) - now a separate call, made for the line only; claims beyond the code
+(the surplus's wording, the check's need for diagnostics, the switch in the template, the GPU functions); the tool's
+report without the prompt reads, its corpus with untracked files. Its smoke run: the daily run config at headroom 18
+with the default 96 exchange blobs, the switch and the check on, the first 8 turns (past the first growth): the check OK
+after all 8, no expert ever only in the file, no fallback and no wait, 55-96 blobs free, decode 21.9-33.1 tok/s.
+
+**Round 5, step 2 as it stands.** The reviews of round 4 found: the fills of earlier rounds' file-read swaps whose
+victims took a blob could land in the same gap as a round's own 8 (the cap now counts the gap's); the surplus counted
+free blobs too small for the victim (a mixed set's; now only those that hold it); the wait counter counts attempts (the
+line says so); the tool's upkeep regex missed negative values and its file list differed from the glob fallback; one
+counting rule written twice (shared now). Answered without a change: the lend region after a growth (the A/B's prompt
+reading above), a claim that lasts a round (each round plans again in order of gain; the A/B's routings in VRAM), the
+line on by default (one diagnostic line among the request's others, step 1 of this plan: how a drain shows on any
+family, the switch off included), the sweep's walk over the slots (microseconds, every 4 tokens). Its smoke run, the
+same as round 4's on the round-5 binary: the check OK after all 8 requests (19-26 ms), no expert ever only in the file,
+no fallback and no wait, 53-96 blobs free, decode 24.0-31.6 tok/s. The reviews of round 5 (both: no high or medium
+finding) left the follow-ups below; the code committed is the code that ran.
+
+Not run: DeepSeek-V4.1 (excluded by the code); GLM-5.3, MiMo-V2.6, DeepSeek-V4-Flash and Hy4 (not run with the switch:
+it is unset in their run configs, and nothing gates it by family); the HIP gfx906 build (STRATA_HIP_GFX906 builds
+strata-x through the CUDA path; no ROCm here; the added code's GPU calls, cudaStreamSynchronize and cudaGetErrorString,
+have HIP mappings in include/strata/hip_compat/cuda_runtime.h and are used elsewhere in src/x).
+
+**Then**: real use - the daily ERNIE-5.5 server runs a pinned copy of this build with STRATA_X_RECYCLE=1 and
+STRATA_X_TIER_CHECK=1 overnight; the per-request line says whether a long session keeps blobs free and few experts only
+in the file. Left for later: (1) a file-read take counts against two gaps' caps of synchronous fills (its round's and
+the gap its fill lands in) - the double count only makes the cap stricter, and the tier adapts a little slower after a
+release; (2) the check compares neighbouring blobs only, so its overlap count is a lower bound (any overlap still fails
+it); (3) at the default 96 exchange blobs the surplus rule rarely applies (it needs more than 96 fitting free blobs:
+after a release), so experts a growth or a fallback sent to the file mostly stay there, which ones rotating; filling
+free blobs from the file (the experts only in the file read back into RAM, hottest first) would bring them back; (4) a
+RAM tier that ranks its experts by heat when the complement does not fit ("what fits": the hottest kept, a hotter victim
+displacing a colder one) - it arises whenever the RAM cannot hold the complement at a start (the MXFP4 sets on this box,
+smaller boxes, an ERNIE start beside a busy desktop); there the old bookkeeping runs; (5) the tests: nothing automated
+checks the bookkeeping (the GPU runs and the check do), the switch off's equivalence to the code before rests on reading
+the code (no same-prompt run against the previous binary), and the prompt reading's gain (269 against 237 tok/s) was
+measured at 8 exchange blobs, with no off arm at 96.

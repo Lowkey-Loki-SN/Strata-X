@@ -130,7 +130,9 @@ The verdict's main uncertainty is DeepSeek V4's routing concentration, which sti
 
 ## 7b. GLM-5.3-Flash testing ground (from 2026-10-07)
 
-**File:** `~/AI/Models/GGUFs/glm53-flash/glm53-flash-q2k-fast-111.gguf` (110.9 GB, arch `glm5next`). It was copied by the user from `/mnt/shared/SharedMount/ModelStash/` (NTFS on the same NVMe). The copy was verified by size and 66 sampled ranges (384 MiB), all identical.
+**File:** `~/AI/Models/GGUFs/glm53-flash/glm53-flash-q2k-fast-111.gguf` (110.9 GB, arch `glm5next`). It was copied by
+the user from an NTFS partition on the same NVMe. The copy was verified by size and 66 sampled ranges (384 MiB), all
+identical.
 
 **Why GLM first:** it is the architecture closest to Strata's own model, so the shared machinery can be brought up with the fewest new kernels. Quality is irrelevant: the port is judged against llama.cpp **on the same file**.
 

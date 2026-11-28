@@ -340,10 +340,10 @@ Per token, `R` = 4 streams of 3072 (all four the token's embedding row, Q8_0 deq
     reused, 0.8-0.9 s) reads the small box at the top left; two new pictures in one request (one VENC); a text request after
     them answers as before. Text with vision on (the three DFly2 requests at 0.9): 31.8 tok/s against 29.8 before.
   - Open: a fused attention kernel for the encoder (the score matrix's traffic and the 72-wide products), video.
-- 2026-11-19, **a quality report checked** (the user: stray Chinese tokens in English / Tanglish replies, "yo yo" answered in
-  Chinese, worse than the hosted model). What was measured, on one corpus (corpus.txt: 16.7K tokens - Strata's DETAILS.md and
-  the user's conversation, English / Tamil / Tanglish / Chinese / the puzzle's reasoning / an SVG), against llama.cpp's own
-  full distributions (llama-perplexity --kl-divergence-base, its CUDA build, the same GGUF):
+- 2026-11-19, **a quality report checked** (the user's report: stray Chinese tokens in English and mixed-language
+  replies, a short greeting answered in Chinese, worse than the hosted model). What was measured, on one corpus
+  (corpus.txt: 16.7K tokens - Strata's DETAILS.md and a mixed-language conversation, the puzzle's reasoning, an SVG),
+  against llama.cpp's own full distributions (llama-perplexity --kl-divergence-base, its CUDA build, the same GGUF):
   - **The engine is not the cause.** Perplexity llama.cpp 34.06, ours 31.24 (chunk 0 16.07 vs 13.99, chunk 1 72.16 vs 69.76):
     ours predicts the text better. KLD(llama.cpp || ours) 0.129 mean (median 0.016), 89.4% the same top token - large, but our
     engine against itself (an identical second run: the prompt path's timed CPU share moves low bits) is 0.027 / 94.0%, and our
@@ -514,8 +514,8 @@ Per token, `R` = 4 streams of 3072 (all four the token's embedding row, Q8_0 deq
       kernel's per-thread order, warp sums and warp order).
     - At the pinned layout (the chat prompt + 200 greedy tokens): the same 200 tokens plain and with DFly2; plain 20.56 ->
       21.03 tok/s, DFly2 26.34 -> 28.16 (its verify windows are the 2-6 column case).
-  - **Quality, the whole corpus** (corpus.txt, 16.7K tokens - Strata's docs and the user's conversation, English / Tamil /
-    Tanglish / Chinese, the puzzle's reasoning, an SVG - against llama.cpp's own full distributions, at one layout and fixed
+  - **Quality, the whole corpus** (corpus.txt, 16.7K tokens - Strata's docs and a mixed-language conversation, the
+    puzzle's reasoning, an SVG - against llama.cpp's own full distributions, at one layout and fixed
     paths, each chunk's first half through the prompt path and the scored half through decode windows of 8): the binary before
     this day's work (9569a63f) and the pinned one now save the same 1.98 GB of distributions byte for byte - every scored
     position's, the k_b kernel, the indexer, the row cache and the gathering ahead all in play. KLD against llama.cpp 0.1378

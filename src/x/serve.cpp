@@ -742,6 +742,22 @@ int serve(Engine& eng, const ServeOptions& so) {
                              100.0 * rs.accepted_at[j] / rs.offered_at[j]);
             std::fprintf(stderr, "\n");
         }
+        // moex (PORT_AUDIT_ALL §6): the RAM copy - its state now and this request's events (its read included), every request
+        // of an engine with a RAM copy; then, with STRATA_X_TIER_CHECK=1, its invariants (the engine idle)
+        if (const Engine::RamCopyState rc = eng.ram_copy_state(); rc.blobs > 0) {
+            const EngineStats sr = eng.stats();
+            std::fprintf(stderr, "strata-x serve: the RAM copy: %lld exchange blobs free, %lld experts only in the file, %lld doubled "
+                                 "in VRAM; this request: blobs taken %lld by swaps and %lld by growths, %lld given back, %lld released "
+                                 "from doubles, %lld swap attempts waited for an owed blob; for want of a blob %lld victims and %lld growths' "
+                                 "experts to the file; %lld victims to the file in place of an expert read from it\n",
+                         (long long) rc.free, (long long) rc.file_only, (long long) rc.doubled,
+                         (long long) (sr.ram_take_swap - st0.ram_take_swap), (long long) (sr.ram_take_grow - st0.ram_take_grow),
+                         (long long) (sr.ram_give - st0.ram_give), (long long) (sr.ram_recycled - st0.ram_recycled),
+                         (long long) (sr.ram_wait - st0.ram_wait), (long long) (sr.ram_fallback - st0.ram_fallback),
+                         (long long) (sr.ram_file_grow - st0.ram_file_grow), (long long) (sr.ram_file_swap - st0.ram_file_swap));
+        }
+        static const bool tier_check = std::getenv("STRATA_X_TIER_CHECK") && std::getenv("STRATA_X_TIER_CHECK")[0] == '1';
+        if (tier_check) eng.tier_check();
     }
     return 0;
 }

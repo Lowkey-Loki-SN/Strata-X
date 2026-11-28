@@ -36,6 +36,21 @@ offers the same steps as tools.
 - Search the open issues and pull requests first, and add to a thread that already covers your point.
 - Open an issue with the form that fits (bug report, feature request or question).
 - One change per pull request. Say what it changes and what it leaves alone.
+- Review your change yourself before you commit it, and again after every fix it needs: for gaps (the callers, code
+  paths, model families, backends, config templates, tests and docs it should cover), loopholes (ways a guard or fix can
+  be bypassed), regressions (defaults, outputs, speed, memory, and compatibility: the API, options, environment
+  switches, run-config keys, log lines that tools read), side effects on code other model families or backends run, and
+  personal data (the next point). Fix each finding, say with evidence why it is not a defect, or, when it lies outside
+  your change, say so and where it is tracked (an issue, or the notes' backlog). Say in the pull request what you found
+  and how you answered it.
+- Keep personal data out of the change, its commit message, the pull-request text and whatever its code writes into
+  files or logs people share: paths that name a user or a machine (a home folder's real path, scratch, temp and mount
+  folders; the notes' `~/AI/...` is fine), user, host and real names and emails other than the identity you publish
+  under, IP addresses other than 127.0.0.1 and 0.0.0.0, API keys and other secrets, prompts and answers from real use,
+  and time stamps with a local time-zone offset in logs and files. Report a finding of it by its kind, not the data
+  itself. Git's commit dates carry your own offset: commit with `TZ=UTC` if you would rather not publish it (commits
+  already made keep theirs unless reset: `TZ=UTC git commit --amend --reset-author`, `TZ=UTC git rebase
+  --reset-author-date`).
 - A new feature is opt-in, and the default path stays byte-identical to the last release. Say how you checked.
 - Build every backend a file touches (CUDA, HIP, SYCL) before asking for review.
 - Change a default only where you measured it faster, and show the numbers with what they were measured on.
